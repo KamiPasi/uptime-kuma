@@ -651,8 +651,7 @@ class Monitor extends BeanModel {
                     bean.msg = `${res.status} - ${res.statusText}`;
                     bean.ping = dayjs().valueOf() - startTime;
 
-                    // in the frontend, the save response is only shown if the saveErrorResponse is set
-                    if (this.getSaveResponse() && this.getSaveErrorResponse()) {
+                    if (this.getSaveResponse()) {
                         await this.saveResponseData(bean, res.data);
                     }
 
@@ -1054,14 +1053,14 @@ class Monitor extends BeanModel {
             let endTimeDayjs = await uptimeCalculator.update(bean.status, parseFloat(bean.ping));
             bean.end_time = R.isoDateTimeMillis(endTimeDayjs);
 
+            // Store before emitting so real-time heartbeats have a stable database ID.
+            log.debug("monitor", `[${this.name}] Store`);
+            await R.store(bean);
+
             // Send to frontend
             log.debug("monitor", `[${this.name}] Send to socket`);
             io.to(this.user_id).emit("heartbeat", bean.toJSON());
             Monitor.sendStats(io, this.id, this.user_id);
-
-            // Store to database
-            log.debug("monitor", `[${this.name}] Store`);
-            await R.store(bean);
 
             log.debug("monitor", `[${this.name}] prometheus.update`);
             const data24h = uptimeCalculator.get24Hour();
@@ -1134,7 +1133,7 @@ class Monitor extends BeanModel {
         }
 
         const maxSize = this.response_max_length ?? RESPONSE_BODY_LENGTH_DEFAULT;
-        if (responseData.length > maxSize) {
+        if (maxSize > 0 && responseData.length > maxSize) {
             responseData = responseData.substring(0, maxSize) + "... (truncated)";
         }
 

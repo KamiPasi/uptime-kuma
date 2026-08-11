@@ -10,7 +10,7 @@
                 role="img"
                 tabindex="0"
                 @mousemove="handleMouseMove"
-                @mouseleave="hideTooltip"
+                @mouseleave="scheduleHideTooltip"
                 @click="handleClick"
                 @keydown="handleKeydown"
                 @focus="handleFocus"
@@ -32,8 +32,11 @@
             :visible="tooltipVisible"
             :content="tooltipContent"
             :x="tooltipX"
-            :y="tooltipY"
-            :position="tooltipPosition"
+            :target-top="tooltipTargetTop"
+            :target-bottom="tooltipTargetBottom"
+            @mouseenter="cancelTooltipHide"
+            @mouseleave="hideTooltip"
+            @load-response="loadCurrentTooltipResponse"
         />
     </div>
 </template>
@@ -42,6 +45,10 @@
 import dayjs from "dayjs";
 import { DOWN, UP, PENDING, MAINTENANCE } from "../util.ts";
 import Tooltip from "./Tooltip.vue";
+
+// HeartbeatBar is rendered once per monitor, while its tooltip is teleported to
+// <body>. Keep only one heartbeat tooltip active across all component instances.
+let activeTooltipOwner = null;
 
 export default {
     components: {
@@ -68,6 +75,11 @@ export default {
             type: Number,
             default: 0,
         },
+        /** Allow authenticated, on-demand response previews */
+        allowResponsePreview: {
+            type: Boolean,
+            default: false,
+        },
     },
     data() {
         return {
@@ -81,9 +93,11 @@ export default {
             tooltipVisible: false,
             tooltipContent: null,
             tooltipX: 0,
-            tooltipY: 0,
-            tooltipPosition: "below",
+            tooltipTargetTop: 0,
+            tooltipTargetBottom: 0,
             tooltipTimeoutId: null,
+            tooltipHideTimeoutId: null,
+            responseRequestToken: 0,
             // Canvas
             hoveredBeatIndex: -1,
         };
@@ -330,6 +344,13 @@ export default {
         if (this.tooltipTimeoutId) {
             clearTimeout(this.tooltipTimeoutId);
         }
+        if (this.tooltipHideTimeoutId) {
+            clearTimeout(this.tooltipHideTimeoutId);
+        }
+        if (activeTooltipOwner === this) {
+            activeTooltipOwner = null;
+        }
+        this.responseRequestToken++;
     },
     beforeMount() {
         if (this.heartbeatList === null) {
@@ -463,52 +484,162 @@ export default {
                 return;
             }
 
+            this.hideOtherTooltip();
+
             // Clear any existing timeout
             if (this.tooltipTimeoutId) {
                 clearTimeout(this.tooltipTimeoutId);
             }
+            this.cancelTooltipHide();
 
             // Small delay for better UX
             this.tooltipTimeoutId = setTimeout(() => {
-                this.tooltipContent = beat;
+                this.tooltipTimeoutId = null;
+
+                if (this.hoveredBeatIndex !== beatIndex) {
+                    return;
+                }
+
+                this.hideOtherTooltip();
+                activeTooltipOwner = this;
+
+                ++this.responseRequestToken;
+
+                this.tooltipContent = {
+                    ...beat,
+                    responsePreviewAvailable: this.canLoadResponse(beat),
+                    responsePreviewLoading: false,
+                };
 
                 // Calculate the beat's position within the canvas
                 const beatFullWidth = this.beatWidth + this.beatHoverAreaPadding * 2;
                 const beatCenterX = beatIndex * beatFullWidth + beatFullWidth / 2;
 
-                // Convert to viewport coordinates
-                const x = canvasRect.left + beatCenterX;
-                const y = canvasRect.top;
-
-                // Check if tooltip would go off-screen and adjust position
-                const tooltipHeight = 80; // Approximate tooltip height
-                const viewportHeight = window.innerHeight;
-                const spaceAbove = y;
-                const spaceBelow = viewportHeight - y - canvasRect.height;
-
-                if (spaceAbove > tooltipHeight && spaceBelow < tooltipHeight) {
-                    // Show above - arrow points down
-                    this.tooltipPosition = "above";
-                    this.tooltipY = y - 10;
-                } else {
-                    // Show below - arrow points up
-                    this.tooltipPosition = "below";
-                    this.tooltipY = y + canvasRect.height + 10;
-                }
-
-                // Ensure tooltip doesn't go off the left or right edge
-                const tooltipWidth = 120; // Approximate tooltip width
-                let adjustedX = x;
-
-                if (x - tooltipWidth / 2 < 10) {
-                    adjustedX = tooltipWidth / 2 + 10;
-                } else if (x + tooltipWidth / 2 > window.innerWidth - 10) {
-                    adjustedX = window.innerWidth - tooltipWidth / 2 - 10;
-                }
-
-                this.tooltipX = adjustedX;
+                this.tooltipX = canvasRect.left + beatCenterX;
+                this.tooltipTargetTop = canvasRect.top;
+                this.tooltipTargetBottom = canvasRect.bottom;
                 this.tooltipVisible = true;
             }, 150);
+        },
+
+        /**
+         * Check whether a heartbeat response may be loaded in this context.
+         * Public status-page heartbeat bars never opt in to this behavior.
+         * @param {object} beat Beat data.
+         * @returns {boolean} Whether to request the response preview.
+         */
+        canLoadResponse(beat) {
+            const status = Number(beat?.status);
+            return (
+                this.allowResponsePreview &&
+                this.$root.loggedIn &&
+                Boolean(beat?.id) &&
+                Boolean(beat?.hasResponse) &&
+                (status === DOWN || status === UP)
+            );
+        },
+
+        /**
+         * Load the response only after the user clicks the tooltip action.
+         * @returns {void}
+         */
+        loadCurrentTooltipResponse() {
+            const beat = this.tooltipContent;
+            if (
+                !beat ||
+                !this.canLoadResponse(beat) ||
+                beat.responsePreviewLoading ||
+                Object.prototype.hasOwnProperty.call(beat, "responsePreview")
+            ) {
+                return;
+            }
+
+            const beatIndex = this.hoveredBeatIndex;
+            const responseRequestToken = ++this.responseRequestToken;
+            this.tooltipContent = {
+                ...beat,
+                responsePreviewLoading: true,
+            };
+            this.loadTooltipResponse(beat, beatIndex, responseRequestToken);
+        },
+
+        /**
+         * Load the response for the currently hovered heartbeat.
+         * @param {object} beat Beat data.
+         * @param {number} beatIndex Index of the beat.
+         * @param {number} requestToken Token used to discard stale callbacks.
+         * @returns {void}
+         */
+        loadTooltipResponse(beat, beatIndex, requestToken) {
+            this.$root.getSocket().emit("getHeartbeatResponse", beat.id, (result) => {
+                if (
+                    requestToken !== this.responseRequestToken ||
+                    beatIndex !== this.hoveredBeatIndex ||
+                    beat.id !== this.tooltipContent?.id
+                ) {
+                    return;
+                }
+
+                if (result?.ok && result.data) {
+                    this.tooltipContent = {
+                        ...this.tooltipContent,
+                        responsePreviewAvailable: false,
+                        responsePreview: result.data.response,
+                        responsePreviewTruncated: Boolean(result.data.truncated),
+                        responsePreviewLoading: false,
+                    };
+                } else if (result?.ok) {
+                    this.tooltipContent = {
+                        ...this.tooltipContent,
+                        responsePreviewAvailable: false,
+                        responsePreviewLoading: false,
+                    };
+                } else {
+                    this.tooltipContent = {
+                        ...this.tooltipContent,
+                        responsePreviewLoading: false,
+                    };
+                }
+            });
+        },
+
+        /**
+         * Close a tooltip owned by another heartbeat bar.
+         * @returns {void}
+         */
+        hideOtherTooltip() {
+            if (activeTooltipOwner && activeTooltipOwner !== this) {
+                activeTooltipOwner.hideTooltip();
+            }
+        },
+
+        /**
+         * Delay hiding briefly so the pointer can move into a scrollable tooltip.
+         * @returns {void}
+         */
+        scheduleHideTooltip() {
+            // A tooltip that has not appeared cannot be intentionally entered.
+            // Cancel its pending show immediately after leaving the canvas.
+            if (!this.tooltipVisible) {
+                this.hideTooltip();
+                return;
+            }
+
+            this.cancelTooltipHide();
+            this.tooltipHideTimeoutId = setTimeout(() => {
+                this.hideTooltip();
+            }, 150);
+        },
+
+        /**
+         * Cancel a pending tooltip hide.
+         * @returns {void}
+         */
+        cancelTooltipHide() {
+            if (this.tooltipHideTimeoutId) {
+                clearTimeout(this.tooltipHideTimeoutId);
+                this.tooltipHideTimeoutId = null;
+            }
         },
 
         /**
@@ -517,13 +648,18 @@ export default {
          * @returns {void}
          */
         hideTooltip(resetHoverIndex = true) {
+            this.cancelTooltipHide();
             if (this.tooltipTimeoutId) {
                 clearTimeout(this.tooltipTimeoutId);
                 this.tooltipTimeoutId = null;
             }
 
+            this.responseRequestToken++;
             this.tooltipVisible = false;
             this.tooltipContent = null;
+            if (activeTooltipOwner === this) {
+                activeTooltipOwner = null;
+            }
 
             if (resetHoverIndex) {
                 this.hoveredBeatIndex = -1;

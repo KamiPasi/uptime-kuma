@@ -31,6 +31,7 @@ class Heartbeat extends BeanModel {
      */
     toJSON() {
         return {
+            id: this._id,
             monitorID: this._monitorId,
             status: this._status,
             time: this._time,
@@ -39,7 +40,7 @@ class Heartbeat extends BeanModel {
             important: this._important,
             duration: this._duration,
             retries: this._retries,
-            response: this._response,
+            hasResponse: Boolean(this._response),
         };
     }
 
@@ -50,15 +51,30 @@ class Heartbeat extends BeanModel {
      */
     async toJSONAsync(opts) {
         return {
-            monitorID: this._monitorId,
-            status: this._status,
-            time: this._time,
-            msg: this._msg,
-            ping: this._ping,
-            important: this._important,
-            duration: this._duration,
-            retries: this._retries,
+            ...this.toJSON(),
             response: opts?.decodeResponse ? await Heartbeat.decodeResponseValue(this._response) : undefined,
+        };
+    }
+
+    /**
+     * Convert a raw heartbeat row to the client-safe heartbeat shape.
+     * The stored response itself must only be exposed by the authenticated,
+     * on-demand response handler.
+     * @param {object} row Raw heartbeat database row.
+     * @returns {object} Client-safe heartbeat data.
+     */
+    static toClientJSON(row) {
+        return {
+            id: row.id,
+            monitorID: row.monitorID ?? row.monitor_id,
+            status: row.status,
+            time: row.time,
+            msg: row.msg,
+            ping: row.ping,
+            important: row.important,
+            duration: row.duration,
+            retries: row.retries,
+            hasResponse: Boolean(row.hasResponse ?? row.has_response ?? row.response),
         };
     }
 

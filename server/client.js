@@ -9,6 +9,7 @@ const io = server.io;
 const { setting } = require("./util-server");
 const checkVersion = require("./check-version");
 const Database = require("./database");
+const Heartbeat = require("./model/heartbeat");
 
 /**
  * Send list of notification providers to client
@@ -44,9 +45,20 @@ async function sendNotificationList(socket) {
  * @returns {Promise<void>}
  */
 async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = false) {
-    let list = await R.getAll(
+    const list = await R.getAll(
         `
-        SELECT * FROM heartbeat
+        SELECT
+            id,
+            monitor_id,
+            status,
+            time,
+            msg,
+            ping,
+            important,
+            duration,
+            retries,
+            CASE WHEN response IS NULL OR response = '' THEN 0 ELSE 1 END AS has_response
+        FROM heartbeat
         WHERE monitor_id = ?
         ORDER BY time DESC
         LIMIT 100
@@ -54,7 +66,7 @@ async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = 
         [monitorID]
     );
 
-    let result = list.reverse();
+    const result = list.reverse().map((row) => Heartbeat.toClientJSON(row));
 
     if (toUser) {
         io.to(socket.userID).emit("heartbeatList", monitorID, result, overwrite);

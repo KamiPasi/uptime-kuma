@@ -117,6 +117,7 @@ const app = server.app;
 
 log.debug("server", "Importing Monitor");
 const Monitor = require("./model/monitor");
+const Heartbeat = require("./model/heartbeat");
 const User = require("./model/user");
 
 log.debug("server", "Importing Settings");
@@ -1053,6 +1054,7 @@ let needSetup = false;
         socket.on("getMonitorBeats", async (monitorID, period, callback) => {
             try {
                 checkLogin(socket);
+                await checkOwner(socket.userID, monitorID);
 
                 log.info("monitor", `Get Monitor Beats: ${monitorID} User ID: ${socket.userID}`);
 
@@ -1064,7 +1066,17 @@ let needSetup = false;
 
                 let list = await R.getAll(
                     `
-                    SELECT *
+                    SELECT
+                        id,
+                        monitor_id,
+                        status,
+                        time,
+                        msg,
+                        ping,
+                        important,
+                        duration,
+                        retries,
+                        CASE WHEN response IS NULL OR response = '' THEN 0 ELSE 1 END AS has_response
                     FROM heartbeat
                     WHERE monitor_id = ?
                       AND time > ${sqlHourOffset}
@@ -1075,7 +1087,57 @@ let needSetup = false;
 
                 callback({
                     ok: true,
-                    data: list,
+                    data: list.map((row) => Heartbeat.toClientJSON(row)),
+                });
+            } catch (e) {
+                callback({
+                    ok: false,
+                    msg: e.message,
+                });
+            }
+        });
+
+        socket.on("getHeartbeatResponse", async (heartbeatID, callback) => {
+            try {
+                checkLogin(socket);
+
+                const normalizedHeartbeatID = Number(heartbeatID);
+                if (!Number.isSafeInteger(normalizedHeartbeatID) || normalizedHeartbeatID <= 0) {
+                    throw new Error("Invalid heartbeat ID.");
+                }
+
+                const row = await R.getRow(
+                    `
+                    SELECT heartbeat.response
+                    FROM heartbeat
+                    INNER JOIN monitor ON monitor.id = heartbeat.monitor_id
+                    WHERE heartbeat.id = ?
+                      AND monitor.user_id = ?
+                    LIMIT 1
+                `,
+                    [normalizedHeartbeatID, socket.userID]
+                );
+
+                if (!row?.response) {
+                    callback({ ok: true, data: null });
+                    return;
+                }
+
+                const decodedResponse = await Heartbeat.decodeResponseValue(row.response);
+                if (decodedResponse === null || decodedResponse === undefined) {
+                    callback({ ok: true, data: null });
+                    return;
+                }
+
+                const responseCharacters = Array.from(String(decodedResponse));
+                const previewLength = 2000;
+
+                callback({
+                    ok: true,
+                    data: {
+                        response: responseCharacters.slice(0, previewLength).join(""),
+                        truncated: responseCharacters.length > previewLength,
+                    },
                 });
             } catch (e) {
                 callback({
@@ -1433,7 +1495,7 @@ let needSetup = false;
 
                 callback({
                     ok: true,
-                    data: list,
+                    data: list.map((bean) => bean.toJSON()),
                 });
             } catch (e) {
                 callback({

@@ -54,13 +54,23 @@
                         :key="$root.userHeartbeatBar"
                         class="col-3 col-xl-6"
                     >
-                        <HeartbeatBar ref="heartbeatBar" size="small" :monitor-id="monitor.id" />
+                        <HeartbeatBar
+                            ref="heartbeatBar"
+                            size="small"
+                            :monitor-id="monitor.id"
+                            :allow-response-preview="true"
+                        />
                     </div>
                 </div>
 
                 <div v-if="$root.userHeartbeatBar == 'bottom'" class="row">
                     <div class="col-12 bottom-style">
-                        <HeartbeatBar ref="heartbeatBar" size="small" :monitor-id="monitor.id" />
+                        <HeartbeatBar
+                            ref="heartbeatBar"
+                            size="small"
+                            :monitor-id="monitor.id"
+                            :allow-response-preview="true"
+                        />
                     </div>
                 </div>
             </router-link>

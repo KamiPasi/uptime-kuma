@@ -1,11 +1,13 @@
 <template>
     <teleport to="body">
         <div
-            v-if="content"
+            v-if="visible && content"
             ref="tooltip"
             class="tooltip-wrapper"
             :style="tooltipStyle"
-            :class="{ 'tooltip-above': position === 'above' }"
+            :class="{ 'tooltip-above': actualPosition === 'above' }"
+            @mouseenter="$emit('mouseenter')"
+            @mouseleave="$emit('mouseleave')"
         >
             <div class="tooltip-content">
                 <slot :content="content">
@@ -15,9 +17,31 @@
                     </div>
                     <div class="tooltip-time">{{ timeText }}</div>
                     <div v-if="content?.msg" class="tooltip-message">{{ content.msg }}</div>
+                    <div v-if="showResponsePreview" class="tooltip-response">
+                        <button
+                            v-if="content.responsePreviewAvailable && !content.responsePreviewLoading && !hasResponsePreview"
+                            type="button"
+                            class="tooltip-response-load"
+                            @click.stop="$emit('load-response')"
+                        >
+                            <font-awesome-icon icon="eye" />
+                            <span>{{ $t("viewResponse") }}</span>
+                        </button>
+                        <div v-else-if="content.responsePreviewLoading" class="tooltip-response-loading">
+                            <font-awesome-icon icon="spinner" spin />
+                            {{ $t("Loading...") }}
+                        </div>
+                        <div v-else-if="hasResponsePreview" class="tooltip-response-content">
+                            <div class="tooltip-response-title">{{ $t("Response") }}</div>
+                            <div class="tooltip-response-body">{{ content.responsePreview }}</div>
+                            <div v-if="content.responsePreviewTruncated" class="tooltip-response-truncated">
+                                {{ $t("responsePreviewTruncated") }}
+                            </div>
+                        </div>
+                    </div>
                 </slot>
             </div>
-            <div class="tooltip-arrow" :class="{ 'arrow-above': position === 'above' }"></div>
+            <div class="tooltip-arrow" :class="{ 'arrow-above': actualPosition === 'above' }"></div>
         </div>
     </teleport>
 </template>
@@ -43,8 +67,13 @@ export default {
             type: Number,
             default: 0,
         },
-        /** Y position (viewport coordinates) */
-        y: {
+        /** Top of the heartbeat bar (viewport coordinates) */
+        targetTop: {
+            type: Number,
+            default: 0,
+        },
+        /** Bottom of the heartbeat bar (viewport coordinates) */
+        targetBottom: {
             type: Number,
             default: 0,
         },
@@ -55,12 +84,34 @@ export default {
             validator: (value) => ["above", "below"].includes(value),
         },
     },
+    emits: ["mouseenter", "mouseleave", "load-response"],
+    data() {
+        return {
+            calculatedX: 0,
+            calculatedTop: 0,
+            actualPosition: this.position,
+            positioned: false,
+        };
+    },
     computed: {
         tooltipStyle() {
             return {
-                left: this.x + "px",
-                top: this.y + "px",
+                left: (this.positioned ? this.calculatedX : this.x) + "px",
+                top: (this.positioned ? this.calculatedTop : this.targetBottom + 8) + "px",
+                visibility: this.positioned ? "visible" : "hidden",
             };
+        },
+
+        showResponsePreview() {
+            return (
+                Boolean(this.content?.responsePreviewAvailable) ||
+                Boolean(this.content?.responsePreviewLoading) ||
+                this.hasResponsePreview
+            );
+        },
+
+        hasResponsePreview() {
+            return Object.prototype.hasOwnProperty.call(this.content ?? {}, "responsePreview");
         },
 
         statusText() {
@@ -68,7 +119,7 @@ export default {
                 return this.$t("Unknown");
             }
 
-            switch (this.content.status) {
+            switch (Number(this.content.status)) {
                 case DOWN:
                     return this.$t("Down");
                 case UP:
@@ -87,7 +138,7 @@ export default {
                 return "status-empty";
             }
 
-            switch (this.content.status) {
+            switch (Number(this.content.status)) {
                 case DOWN:
                     return "status-down";
                 case UP:
@@ -108,6 +159,91 @@ export default {
             return this.$root.datetime(this.content.time);
         },
     },
+    watch: {
+        visible(value) {
+            this.positioned = false;
+            if (value) {
+                this.queuePositionUpdate();
+            }
+        },
+        content: {
+            handler() {
+                this.queuePositionUpdate();
+            },
+            deep: true,
+        },
+        x() {
+            this.queuePositionUpdate();
+        },
+        targetTop() {
+            this.queuePositionUpdate();
+        },
+        targetBottom() {
+            this.queuePositionUpdate();
+        },
+    },
+    mounted() {
+        window.addEventListener("resize", this.queuePositionUpdate);
+        this.queuePositionUpdate();
+    },
+    beforeUnmount() {
+        window.removeEventListener("resize", this.queuePositionUpdate);
+    },
+    methods: {
+        /**
+         * Reposition after Vue has rendered any content-size changes.
+         * @returns {void}
+         */
+        queuePositionUpdate() {
+            if (this.visible) {
+                this.$nextTick(() => this.updatePosition());
+            }
+        },
+
+        /**
+         * Fit the measured tooltip into the current viewport.
+         * @returns {void}
+         */
+        updatePosition() {
+            const tooltip = this.$refs.tooltip;
+            if (!tooltip || !this.visible) {
+                return;
+            }
+
+            const margin = 10;
+            const targetGap = 8;
+            const tooltipWidth = tooltip.offsetWidth;
+            const tooltipHeight = tooltip.offsetHeight;
+            const spaceAbove = this.targetTop - targetGap - margin;
+            const spaceBelow = window.innerHeight - this.targetBottom - targetGap - margin;
+
+            let nextPosition = this.position;
+            if (nextPosition === "above" && tooltipHeight > spaceAbove && spaceBelow > spaceAbove) {
+                nextPosition = "below";
+            } else if (nextPosition === "below" && tooltipHeight > spaceBelow && spaceAbove > spaceBelow) {
+                nextPosition = "above";
+            }
+
+            const desiredTop =
+                nextPosition === "above"
+                    ? this.targetTop - targetGap - tooltipHeight
+                    : this.targetBottom + targetGap;
+            const maximumTop = Math.max(margin, window.innerHeight - tooltipHeight - margin);
+
+            this.actualPosition = nextPosition;
+            this.calculatedTop = Math.min(Math.max(desiredTop, margin), maximumTop);
+
+            if (tooltipWidth >= window.innerWidth - margin * 2) {
+                this.calculatedX = window.innerWidth / 2;
+            } else {
+                const minimumX = margin + tooltipWidth / 2;
+                const maximumX = window.innerWidth - margin - tooltipWidth / 2;
+                this.calculatedX = Math.min(Math.max(this.x, minimumX), maximumX);
+            }
+
+            this.positioned = true;
+        },
+    },
 };
 </script>
 
@@ -117,7 +253,9 @@ export default {
 .tooltip-wrapper {
     position: fixed;
     z-index: 9999;
-    pointer-events: none;
+    width: max-content;
+    max-width: calc(100vw - 20px);
+    pointer-events: auto;
     transform: translateX(-50%);
 
     .tooltip-content {
@@ -128,6 +266,9 @@ export default {
         padding: 8px 12px;
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
         min-width: 120px;
+        max-width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+        overflow: hidden;
         text-align: center;
         position: relative;
 
@@ -182,6 +323,82 @@ export default {
             margin-top: 4px;
             padding-top: 4px;
             border-top: 1px solid rgba(75, 85, 99, 0.3);
+            max-height: min(100px, 20vh);
+            overflow: auto;
+            overflow-wrap: anywhere;
+            white-space: pre-wrap;
+        }
+
+        .tooltip-response {
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid rgba(75, 85, 99, 0.3);
+            color: #f3f4f6;
+            font-size: 12px;
+            text-align: center;
+
+            .tooltip-response-title {
+                margin-bottom: 4px;
+                font-weight: 600;
+            }
+
+            .tooltip-response-loading,
+            .tooltip-response-truncated {
+                color: #d1d5db;
+                font-size: 11px;
+            }
+
+            .tooltip-response-loading {
+                display: inline-flex;
+                min-height: 30px;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .tooltip-response-load {
+                display: inline-flex;
+                min-height: 30px;
+                align-items: center;
+                gap: 6px;
+                border: 0;
+                border-radius: 6px;
+                padding: 4px 10px;
+                background: transparent;
+                color: #d1d5db;
+                cursor: pointer;
+                font-size: 12px;
+                line-height: 1;
+                transition: color 0.15s ease, background-color 0.15s ease;
+
+                &:hover {
+                    background: rgba(255, 255, 255, 0.07);
+                    color: #fff;
+                }
+
+                &:focus-visible {
+                    outline: 2px solid $primary;
+                    outline-offset: 1px;
+                }
+            }
+
+            .tooltip-response-content {
+                width: min(400px, calc(100vw - 44px));
+                text-align: left;
+            }
+
+            .tooltip-response-body {
+                max-height: min(240px, 40vh);
+                overflow: auto;
+                overflow-wrap: anywhere;
+                overscroll-behavior: contain;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+
+            .tooltip-response-truncated {
+                margin-top: 4px;
+                font-style: italic;
+            }
         }
     }
 
@@ -226,8 +443,6 @@ export default {
     animation: tooltip-fade-in 0.2s $easing-out;
 
     &.tooltip-above {
-        transform: translateX(-50%) translateY(-8px);
-
         .tooltip-content::before {
             top: auto;
             bottom: -1px;

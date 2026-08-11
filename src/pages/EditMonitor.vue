@@ -2040,8 +2040,7 @@
                                     v-if="
                                         (monitor.type === 'http' ||
                                             monitor.type === 'keyword' ||
-                                            monitor.type === 'json-query') &&
-                                        monitor.saveErrorResponse
+                                            monitor.type === 'json-query')
                                     "
                                     class="my-3"
                                 >

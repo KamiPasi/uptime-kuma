@@ -79,6 +79,8 @@
     "hour": "小时",
     "-hour": "小时",
     "Response": "响应",
+    "viewResponse": "查看响应",
+    "responsePreviewTruncated": "预览已截断为 2000 个字符。",
     "Ping": "Ping",
     "Monitor Type": "监控类型",
     "Keyword": "关键字",

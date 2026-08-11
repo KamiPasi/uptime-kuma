@@ -69,6 +69,8 @@
     "minuteShort": "{n} min | {n} min",
     "years": "{n} year | {n} years",
     "Response": "Response",
+    "viewResponse": "View response",
+    "responsePreviewTruncated": "Preview truncated to 2000 characters.",
     "Pin this incident": "Pin this incident",
     "Ping": "Ping",
     "Monitor Type": "Monitor Type",

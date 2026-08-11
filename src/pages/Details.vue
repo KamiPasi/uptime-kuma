@@ -148,7 +148,7 @@
             <div class="shadow-box">
                 <div class="row">
                     <div class="col-md-8">
-                        <HeartbeatBar :monitor-id="monitor.id" />
+                        <HeartbeatBar :monitor-id="monitor.id" :allow-response-preview="true" />
                         <span class="word">
                             {{ $t("checkEverySecond", [monitor.interval]) }} ({{
                                 secondsToHumanReadableFormat(monitor.interval)
