@@ -358,7 +358,12 @@
                     </thead>
                     <tbody>
                         <tr v-for="(beat, index) in displayedRecords" :key="index" style="padding: 10px">
-                            <td><Status :status="beat.status" /></td>
+                            <td>
+                                <Status
+                                    :status="beat.status"
+                                    :response-validation-failed="beat.responseValidationFailed"
+                                />
+                            </td>
                             <td :class="{ 'border-0': !beat.msg }">
                                 <Datetime :value="beat.time" />
                             </td>

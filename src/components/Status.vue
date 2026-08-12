@@ -10,10 +10,19 @@ export default {
             type: Number,
             default: 0,
         },
+        /** Whether this DOWN status was caused by response validation */
+        responseValidationFailed: {
+            type: Boolean,
+            default: false,
+        },
     },
 
     computed: {
         color() {
+            if (this.status === 0 && this.responseValidationFailed) {
+                return "response-validation";
+            }
+
             if (this.status === 0) {
                 return "danger";
             }

@@ -22,6 +22,7 @@ class Heartbeat extends BeanModel {
             time: this.time,
             msg: "", // Hide for public
             ping: this.ping,
+            responseValidationFailed: Boolean(this.responseValidationFailed),
         };
     }
 
@@ -41,6 +42,7 @@ class Heartbeat extends BeanModel {
             duration: this._duration,
             retries: this._retries,
             hasResponse: Boolean(this._response),
+            responseValidationFailed: Boolean(this._responseValidationFailed),
         };
     }
 
@@ -75,6 +77,7 @@ class Heartbeat extends BeanModel {
             duration: row.duration,
             retries: row.retries,
             hasResponse: Boolean(row.hasResponse ?? row.has_response ?? row.response),
+            responseValidationFailed: Boolean(row.responseValidationFailed ?? row.response_validation_failed),
         };
     }
 

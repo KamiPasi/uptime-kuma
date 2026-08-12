@@ -2038,9 +2038,9 @@
 
                                 <div
                                     v-if="
-                                        (monitor.type === 'http' ||
-                                            monitor.type === 'keyword' ||
-                                            monitor.type === 'json-query')
+                                        monitor.type === 'http' ||
+                                        monitor.type === 'keyword' ||
+                                        monitor.type === 'json-query'
                                     "
                                     class="my-3"
                                 >
@@ -2087,6 +2087,32 @@
                                     />
                                     <div class="form-text">
                                         {{ $t("responseMaxLengthDescription") }}
+                                    </div>
+                                </div>
+
+                                <div v-if="monitor.type === 'http'" class="my-3 response-validation-toggle">
+                                    <div class="form-check form-switch">
+                                        <input
+                                            id="response-validation-enabled"
+                                            v-model="monitor.responseValidationEnabled"
+                                            class="form-check-input"
+                                            type="checkbox"
+                                            role="switch"
+                                            @change="handleResponseValidationToggle"
+                                        />
+                                        <label class="form-check-label" for="response-validation-enabled">
+                                            {{ $t("responseValidationEnable") }}
+                                        </label>
+                                    </div>
+                                    <div class="form-text">
+                                        {{ $t("responseValidationEnableDescription") }}
+                                    </div>
+                                    <div
+                                        v-if="monitor.responseValidationEnabled"
+                                        class="alert alert-info mt-2 mb-0 py-2"
+                                    >
+                                        <font-awesome-icon icon="info-circle" />
+                                        {{ $t("responseValidationStatusCodesManagedByScenarios") }}
                                     </div>
                                 </div>
 
@@ -3190,6 +3216,17 @@
                                 </div>
                             </template>
                         </div>
+
+                        <div
+                            v-if="monitor.type === 'http' && monitor.responseValidationEnabled"
+                            class="col-12 response-validation-section"
+                        >
+                            <ResponseValidationWorkbench
+                                v-model="monitor.responseValidationRules"
+                                :monitor-draft="monitor"
+                                :status-code-options="responseValidationStatusCodeOptions"
+                            />
+                        </div>
                     </div>
 
                     <div class="fixed-bottom-bar p-3">
@@ -3243,10 +3280,191 @@ import isFQDN from "validator/lib/isFQDN";
 import isIP from "validator/lib/isIP";
 import HiddenInput from "../components/HiddenInput.vue";
 import EditMonitorConditions from "../components/EditMonitorConditions.vue";
+import ResponseValidationWorkbench from "../components/ResponseValidationWorkbench.vue";
 
 const toast = useToast();
 
 const pushTokenLength = 32;
+
+let responseValidationIdSequence = 0;
+
+const responseValidationOperators = new Set([
+    "equals",
+    "notEquals",
+    "contains",
+    "notContains",
+    "greaterThan",
+    "greaterThanOrEqual",
+    "lessThan",
+    "lessThanOrEqual",
+    "exists",
+    "notExists",
+]);
+
+const responseValidationValueTypes = new Set(["string", "number", "boolean", "null"]);
+const responseValidationLimits = Object.freeze({
+    maxScenarios: 20,
+    maxStatusCodesPerScenario: 20,
+    maxTotalNodes: 100,
+    maxDepth: 5,
+    maxExpectedStringLength: 4096,
+});
+const responseValidationPathProperty = "(?:[A-Za-z_$][A-Za-z0-9_$]*|`(?:\\\\.|[^`\\\\])*`)";
+const responseValidationPathIndex = "\\[[0-9]+\\]";
+const responseValidationPathPattern = new RegExp(
+    `^(?:${responseValidationPathProperty}(?:${responseValidationPathIndex}|\\.${responseValidationPathProperty})*|\\$(?:${responseValidationPathIndex}|\\.${responseValidationPathProperty})*)$`
+);
+
+/**
+ * Match the server's non-executable response field-path syntax.
+ * @param {string} path Candidate JSON field path
+ * @returns {boolean} Whether the path contains only properties and array indexes
+ */
+function isValidResponseValidationPath(path) {
+    const normalized = typeof path === "string" ? path.trim() : "";
+    if (!normalized || normalized.length > 512 || !responseValidationPathPattern.test(normalized)) {
+        return false;
+    }
+    return [...normalized.matchAll(/\[([0-9]+)\]/g)].every((match) => Number.isSafeInteger(Number(match[1])));
+}
+
+/**
+ * Create an identifier for a response validation scenario or node.
+ * @param {string} prefix Identifier prefix
+ * @returns {string} Generated identifier
+ */
+function generateResponseValidationId(prefix) {
+    responseValidationIdSequence += 1;
+    return `${prefix}-${Date.now().toString(36)}-${responseValidationIdSequence.toString(36)}`;
+}
+
+/**
+ * Return the initial expected value for a response value type.
+ * @param {string} valueType Response value type
+ * @returns {string|number|boolean|null} Initial expected value
+ */
+function defaultExpectedValue(valueType) {
+    if (valueType === "number") {
+        return 0;
+    }
+    if (valueType === "boolean") {
+        return true;
+    }
+    if (valueType === "null") {
+        return null;
+    }
+    return "";
+}
+
+/**
+ * Create an empty JSON response validation condition.
+ * @returns {object} Condition node
+ */
+function createResponseValidationCondition() {
+    return {
+        id: generateResponseValidationId("condition"),
+        type: "condition",
+        source: "json",
+        path: "",
+        operator: "equals",
+        valueType: "string",
+        expectedValue: "",
+    };
+}
+
+/**
+ * Create a response validation scenario with one empty condition.
+ * @returns {object} Response validation scenario
+ */
+function createResponseValidationScenario() {
+    return {
+        id: generateResponseValidationId("scenario"),
+        statusCodes: ["200"],
+        root: {
+            id: generateResponseValidationId("group"),
+            type: "group",
+            combinator: "and",
+            children: [createResponseValidationCondition()],
+        },
+    };
+}
+
+/**
+ * Normalize a response validation condition tree node.
+ * @param {object} node Node received from the server or an older client
+ * @returns {object} Normalized condition or group node
+ */
+function normalizeResponseValidationNode(node) {
+    if (node?.type === "condition") {
+        const operator = responseValidationOperators.has(node.operator) ? node.operator : "equals";
+        let valueType = responseValidationValueTypes.has(node.valueType) ? node.valueType : "string";
+        let expectedValue = node.expectedValue;
+        if (["exists", "notExists"].includes(operator)) {
+            valueType = "null";
+            expectedValue = null;
+        } else if (["contains", "notContains"].includes(operator) && valueType !== "string") {
+            valueType = "string";
+            expectedValue = "";
+        } else if (
+            ["greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual"].includes(operator) &&
+            valueType !== "number"
+        ) {
+            valueType = "number";
+            expectedValue = 0;
+        } else if (valueType === "null") {
+            expectedValue = null;
+        } else if (expectedValue === undefined || expectedValue === null) {
+            expectedValue = defaultExpectedValue(valueType);
+        }
+        return {
+            id: node.id ? String(node.id) : generateResponseValidationId("condition"),
+            type: "condition",
+            source: "json",
+            path: typeof node.path === "string" ? node.path : "",
+            operator,
+            valueType,
+            expectedValue,
+        };
+    }
+
+    return {
+        id: node?.id ? String(node.id) : generateResponseValidationId("group"),
+        type: "group",
+        combinator: node?.combinator === "or" ? "or" : "and",
+        children: Array.isArray(node?.children) ? node.children.map(normalizeResponseValidationNode) : [],
+    };
+}
+
+/**
+ * Normalize the versioned response validation configuration.
+ * @param {object|string|null} rules Rules received from the server
+ * @returns {object} Normalized version 1 rules
+ */
+function normalizeResponseValidationRules(rules) {
+    let parsedRules = rules;
+    if (typeof parsedRules === "string") {
+        try {
+            parsedRules = JSON.parse(parsedRules);
+        } catch (_) {
+            parsedRules = null;
+        }
+    }
+
+    const scenarios = Array.isArray(parsedRules?.scenarios)
+        ? parsedRules.scenarios.map((scenario) => ({
+              id: scenario?.id ? String(scenario.id) : generateResponseValidationId("scenario"),
+              statusCodes: Array.isArray(scenario?.statusCodes)
+                  ? scenario.statusCodes.filter((code) => typeof code === "string")
+                  : [],
+              root: normalizeResponseValidationNode(scenario?.root),
+          }))
+        : [];
+
+    return {
+        version: 1,
+        scenarios,
+    };
+}
 
 const defaultValueList = {
     http: {
@@ -3285,6 +3503,11 @@ const monitorDefaults = {
     saveResponse: false,
     saveErrorResponse: true,
     responseMaxLength: 1024,
+    responseValidationEnabled: false,
+    responseValidationRules: {
+        version: 1,
+        scenarios: [],
+    },
     dns_resolve_type: "A",
     dns_resolve_server: "",
     docker_container: "",
@@ -3337,6 +3560,7 @@ export default {
         TagsManager,
         VueMultiselect,
         EditMonitorConditions,
+        ResponseValidationWorkbench,
     },
 
     data() {
@@ -3377,6 +3601,10 @@ export default {
     },
 
     computed: {
+        responseValidationStatusCodeOptions() {
+            return this.acceptedStatusCodeOptions.filter((code) => this.isValidResponseStatusCode(code));
+        },
+
         timeoutStep() {
             return this.monitor.type === "ping" ? 1 : 0.1;
         },
@@ -3723,6 +3951,14 @@ message HealthCheckResponse {
         "monitor.type"(newType, oldType) {
             this.checkDomain();
 
+            if (newType !== "http") {
+                this.monitor.responseValidationEnabled = false;
+            }
+
+            this.monitor.responseValidationRules = normalizeResponseValidationRules(
+                this.monitor.responseValidationRules
+            );
+
             if (newType === "pm2") {
                 this.loadPM2ProcessList();
             }
@@ -3928,6 +4164,7 @@ message HealthCheckResponse {
         },
     },
     mounted() {
+        this.$root.emitter.on("monitorNotificationsDisabled", this.handleMonitorNotificationsDisabled);
         this.init();
 
         let acceptedStatusCodeOptions = ["100-199", "200-299", "300-399", "400-499", "500-599"];
@@ -3970,7 +4207,205 @@ message HealthCheckResponse {
         this.globalpingdnsresolvetypeoptions = globalpingdnsresolvetypeoptions;
         this.kafkaSaslMechanismOptions = kafkaSaslMechanismOptions;
     },
+    beforeUnmount() {
+        this.$root.emitter.off("monitorNotificationsDisabled", this.handleMonitorNotificationsDisabled);
+    },
     methods: {
+        handleMonitorNotificationsDisabled(monitorID) {
+            if (!this.isClone && Number(this.monitor.id) === Number(monitorID)) {
+                this.monitor.notificationIDList = {};
+            }
+        },
+
+        handleResponseValidationToggle() {
+            this.monitor.responseValidationRules = normalizeResponseValidationRules(
+                this.monitor.responseValidationRules
+            );
+
+            if (this.monitor.responseValidationEnabled && this.monitor.responseValidationRules.scenarios.length === 0) {
+                this.monitor.responseValidationRules = {
+                    version: 1,
+                    scenarios: [createResponseValidationScenario()],
+                };
+            }
+        },
+
+        validateResponseValidationRules() {
+            const rules = normalizeResponseValidationRules(this.monitor.responseValidationRules);
+            this.monitor.responseValidationRules = rules;
+            const claimedStatusCodes = new Map();
+
+            if (rules.scenarios.length === 0) {
+                toast.error(this.$t("responseValidationErrorNoScenarios"));
+                return false;
+            }
+            if (rules.scenarios.length > responseValidationLimits.maxScenarios) {
+                toast.error(
+                    this.$t("responseValidationErrorTooManyScenarios", {
+                        limit: responseValidationLimits.maxScenarios,
+                    })
+                );
+                return false;
+            }
+
+            const nodeCounter = { count: 0 };
+
+            for (let scenarioIndex = 0; scenarioIndex < rules.scenarios.length; scenarioIndex++) {
+                const scenario = rules.scenarios[scenarioIndex];
+                if (scenario.statusCodes.length === 0) {
+                    toast.error(
+                        this.$t("responseValidationErrorScenarioStatus", {
+                            index: scenarioIndex + 1,
+                        })
+                    );
+                    return false;
+                }
+                if (scenario.statusCodes.length > responseValidationLimits.maxStatusCodesPerScenario) {
+                    toast.error(
+                        this.$t("responseValidationErrorTooManyStatuses", {
+                            index: scenarioIndex + 1,
+                            limit: responseValidationLimits.maxStatusCodesPerScenario,
+                        })
+                    );
+                    return false;
+                }
+
+                if (!scenario.statusCodes.every((code) => this.isValidResponseStatusCode(code))) {
+                    toast.error(
+                        this.$t("responseValidationErrorInvalidStatus", {
+                            index: scenarioIndex + 1,
+                        })
+                    );
+                    return false;
+                }
+
+                for (const pattern of scenario.statusCodes) {
+                    const [start, end = start] = pattern.split("-").map(Number);
+                    for (let statusCode = start; statusCode <= end; statusCode++) {
+                        if (claimedStatusCodes.has(statusCode)) {
+                            toast.error(
+                                this.$t("responseValidationErrorOverlappingStatus", {
+                                    status: statusCode,
+                                    first: claimedStatusCodes.get(statusCode) + 1,
+                                    second: scenarioIndex + 1,
+                                })
+                            );
+                            return false;
+                        }
+                        claimedStatusCodes.set(statusCode, scenarioIndex);
+                    }
+                }
+
+                const nodeError = this.validateResponseValidationNode(scenario.root, 1, nodeCounter, true);
+                if (nodeError) {
+                    toast.error(
+                        this.$t("responseValidationErrorScenarioRule", {
+                            index: scenarioIndex + 1,
+                            error: nodeError,
+                        })
+                    );
+                    return false;
+                }
+            }
+
+            return true;
+        },
+
+        isValidResponseStatusCode(code) {
+            if (!/^\d{3}(?:-\d{3})?$/.test(code)) {
+                return false;
+            }
+            const [start, end = start] = code.split("-").map(Number);
+            return start >= 100 && end <= 599 && start <= end;
+        },
+
+        validateResponseValidationNode(node, depth = 1, nodeCounter = { count: 0 }, mustBeGroup = false) {
+            if (!node || typeof node !== "object") {
+                return mustBeGroup
+                    ? this.$t("responseValidationErrorInvalidRoot")
+                    : this.$t("responseValidationErrorInvalidCondition");
+            }
+            if (depth > responseValidationLimits.maxDepth) {
+                return this.$t("responseValidationErrorTooDeep", {
+                    limit: responseValidationLimits.maxDepth,
+                });
+            }
+
+            nodeCounter.count += 1;
+            if (nodeCounter.count > responseValidationLimits.maxTotalNodes) {
+                return this.$t("responseValidationErrorTooManyNodes", {
+                    limit: responseValidationLimits.maxTotalNodes,
+                });
+            }
+
+            if (node.type === "group") {
+                if (!Array.isArray(node.children) || node.children.length === 0) {
+                    return this.$t("responseValidationErrorEmptyGroup");
+                }
+                for (const child of node.children) {
+                    const childError = this.validateResponseValidationNode(child, depth + 1, nodeCounter, false);
+                    if (childError) {
+                        return childError;
+                    }
+                }
+                return null;
+            }
+
+            if (mustBeGroup) {
+                return this.$t("responseValidationErrorInvalidRoot");
+            }
+            if (node.type !== "condition" || node.source !== "json") {
+                return this.$t("responseValidationErrorInvalidCondition");
+            }
+            if (!node.path || !node.path.trim()) {
+                return this.$t("responseValidationErrorPathRequired");
+            }
+            if (!isValidResponseValidationPath(node.path)) {
+                return this.$t("responseValidationErrorInvalidPath");
+            }
+            if (!responseValidationOperators.has(node.operator)) {
+                return this.$t("responseValidationErrorInvalidOperator");
+            }
+            if (!responseValidationValueTypes.has(node.valueType)) {
+                return this.$t("responseValidationErrorInvalidValueType");
+            }
+
+            if (["contains", "notContains"].includes(node.operator) && node.valueType !== "string") {
+                return this.$t("responseValidationErrorInvalidValueType");
+            }
+            if (
+                ["greaterThan", "greaterThanOrEqual", "lessThan", "lessThanOrEqual"].includes(node.operator) &&
+                node.valueType !== "number"
+            ) {
+                return this.$t("responseValidationErrorInvalidValueType");
+            }
+
+            if (!["exists", "notExists"].includes(node.operator) && node.valueType !== "null") {
+                if (
+                    node.valueType === "number" &&
+                    (typeof node.expectedValue !== "number" || !Number.isFinite(node.expectedValue))
+                ) {
+                    return this.$t("responseValidationErrorNumberRequired");
+                }
+                if (node.valueType === "boolean" && typeof node.expectedValue !== "boolean") {
+                    return this.$t("responseValidationErrorBooleanRequired");
+                }
+                if (node.valueType === "string" && typeof node.expectedValue !== "string") {
+                    return this.$t("responseValidationErrorValueRequired");
+                }
+                if (
+                    node.valueType === "string" &&
+                    node.expectedValue.length > responseValidationLimits.maxExpectedStringLength
+                ) {
+                    return this.$t("responseValidationErrorValueTooLong", {
+                        limit: responseValidationLimits.maxExpectedStringLength,
+                    });
+                }
+            }
+
+            return null;
+        },
+
         loadPM2ProcessList() {
             this.pm2ProcessLoading = true;
             this.pm2ProcessError = "";
@@ -4012,6 +4447,7 @@ message HealthCheckResponse {
             if (this.isAdd) {
                 this.monitor = {
                     ...monitorDefaults,
+                    responseValidationRules: normalizeResponseValidationRules(monitorDefaults.responseValidationRules),
                     ping_count: 3,
                     ping_numeric: true,
                     packetSize: 56,
@@ -4041,6 +4477,10 @@ message HealthCheckResponse {
                             }
                         }
 
+                        res.monitor.responseValidationEnabled = Boolean(res.monitor.responseValidationEnabled);
+                        res.monitor.responseValidationRules = normalizeResponseValidationRules(
+                            res.monitor.responseValidationRules
+                        );
                         this.monitor = res.monitor;
 
                         if (this.isClone) {
@@ -4120,6 +4560,14 @@ message HealthCheckResponse {
          * @returns {boolean} Is the form input valid?
          */
         isInputValid() {
+            if (
+                this.monitor.type === "http" &&
+                this.monitor.responseValidationEnabled &&
+                !this.validateResponseValidationRules()
+            ) {
+                return false;
+            }
+
             if (this.monitor.body && (!this.monitor.httpBodyEncoding || this.monitor.httpBodyEncoding === "json")) {
                 try {
                     JSON.parse(this.monitor.body);
@@ -4303,6 +4751,10 @@ message HealthCheckResponse {
             const monitorTypesWithEncodingAllowed = ["http", "keyword", "json-query"];
             if (this.monitor.type && !monitorTypesWithEncodingAllowed.includes(this.monitor.type)) {
                 this.monitor.httpBodyEncoding = null;
+            }
+
+            if (this.monitor.type !== "http") {
+                this.monitor.responseValidationEnabled = false;
             }
 
             if (this.monitor.headers) {
@@ -4536,5 +4988,18 @@ message HealthCheckResponse {
 
 textarea {
     min-height: 200px;
+}
+
+.response-validation-section {
+    min-width: 0;
+}
+
+@media (max-width: 575px) {
+    .fixed-bottom-bar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
+    }
 }
 </style>

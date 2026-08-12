@@ -2,6 +2,18 @@ import dayjs from "dayjs";
 import { getTimeZones } from "@vvo/tzdb";
 import { localeDirection, currentLocale } from "./i18n";
 import { POSITION } from "vue-toastification";
+import { DOWN } from "./util.ts";
+
+/**
+ * Check whether a heartbeat represents a final response validation failure.
+ * The numeric status remains DOWN so existing uptime and notification semantics
+ * continue to work; the marker only selects the dedicated frontend treatment.
+ * @param {object|null|undefined} heartbeat Heartbeat to inspect.
+ * @returns {boolean} Whether this is a response validation failure.
+ */
+export function isResponseValidationFailure(heartbeat) {
+    return Number(heartbeat?.status) === DOWN && Boolean(heartbeat?.responseValidationFailed);
+}
 
 /**
  * Returns the offset from UTC in hours for the current locale.

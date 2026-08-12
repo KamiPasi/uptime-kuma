@@ -2,6 +2,10 @@
 @import "multiselect.scss";
 @import "node_modules/bootstrap/scss/bootstrap";
 
+:root {
+    --response-validation: #{$response-validation};
+}
+
 #app {
     font-family:
         "Twemoji Country Flags",
@@ -39,12 +43,22 @@ textarea.form-control {
     background-color: $maintenance !important;
 }
 
+.bg-response-validation,
+.response-validation-toast {
+    color: white !important;
+    background-color: $response-validation !important;
+}
+
 .bg-dark {
     color: white;
 }
 
 .text-maintenance {
     color: $maintenance !important;
+}
+
+.text-response-validation {
+    color: $response-validation !important;
 }
 
 .incident a,

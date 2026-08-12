@@ -119,9 +119,19 @@ log.debug("server", "Importing Monitor");
 const Monitor = require("./model/monitor");
 const Heartbeat = require("./model/heartbeat");
 const User = require("./model/user");
+const {
+    evaluateResponseValidation,
+    normalizeResponseValidationRulesForStorage,
+    validateResponseValidationRules,
+} = require("./response-validation");
+const {
+    createResponseValidationPreview,
+    isResponseValidationJsonPreviewSafe,
+} = require("./response-validation-preview");
 
 log.debug("server", "Importing Settings");
 const {
+    checkStatusCode,
     getSettings,
     setSettings,
     setting,
@@ -740,6 +750,118 @@ let needSetup = false;
         // Auth Only API
         // ***************************
 
+        socket.on("testResponseValidation", async (monitorDraft, callback) => {
+            try {
+                checkLogin(socket);
+
+                const testMonitor = createResponseValidationTestMonitor(monitorDraft);
+                if (testMonitor.proxy_id) {
+                    const proxy = await R.findOne("proxy", "id = ? AND user_id = ?", [
+                        testMonitor.proxy_id,
+                        socket.userID,
+                    ]);
+                    if (!proxy) {
+                        throw new Error("Proxy not found.");
+                    }
+                }
+                const startedAt = dayjs().valueOf();
+                const options = await testMonitor.buildHttpRequestOptions();
+
+                // Keep the wire body as text for the preview. The evaluator
+                // independently parses JSON before resolving field paths.
+                options.transformResponse = [(data) => data];
+                options.maxContentLength = RESPONSE_VALIDATION_TEST_RESPONSE_MAX_LENGTH;
+
+                let response;
+                try {
+                    response = await testMonitor.makeAxiosRequest(options);
+                } catch (error) {
+                    // A completed HTTP response is a successful test transport,
+                    // even when no validation scenario accepts its status. OAuth
+                    // and NTLM 401 responses remain authentication handshakes so
+                    // they keep precedence over response validation.
+                    if (
+                        Number.isInteger(error.response?.status) &&
+                        !(
+                            (testMonitor.auth_method === "oauth2-cc" || testMonitor.auth_method === "ntlm") &&
+                            error.response.status === 401
+                        )
+                    ) {
+                        response = error.response;
+                    } else {
+                        throw error;
+                    }
+                }
+                const responseCompletedAt = dayjs().valueOf();
+
+                const rawResponseBuffer = Buffer.isBuffer(response.data)
+                    ? response.data
+                    : Buffer.from(response.data === undefined || response.data === null ? "" : String(response.data));
+                const responseSize = rawResponseBuffer.length;
+                const truncated = responseSize > RESPONSE_VALIDATION_TEST_BODY_MAX_LENGTH;
+                const rawBody = rawResponseBuffer
+                    .subarray(0, RESPONSE_VALIDATION_TEST_BODY_MAX_LENGTH)
+                    .toString("utf8");
+
+                let body = rawBody;
+                let bodyIsJson = false;
+                let bodyJsonPreviewUnavailable = false;
+                if (!truncated) {
+                    try {
+                        const parsedBody = JSON.parse(rawBody);
+                        bodyIsJson = true;
+                        if (isResponseValidationJsonPreviewSafe(parsedBody)) {
+                            body = parsedBody;
+                        } else {
+                            bodyJsonPreviewUnavailable = true;
+                        }
+                    } catch (_) {
+                        // Non-JSON responses remain text.
+                    }
+                }
+
+                const validation = await evaluateResponseValidation(
+                    testMonitor.getResponseValidationRules(),
+                    response.status,
+                    response.data,
+                    {
+                        collectAll: true,
+                        fallbackStatusAccepted: checkStatusCode(response.status, testMonitor.getAcceptedStatuscodes()),
+                    }
+                );
+                const responseHeaders = response.headers?.toJSON
+                    ? response.headers.toJSON()
+                    : { ...(response.headers || {}) };
+                const contentType = response.headers?.get
+                    ? response.headers.get("content-type")
+                    : responseHeaders["content-type"] || null;
+
+                callback({
+                    ok: true,
+                    response: {
+                        status: response.status,
+                        statusText: response.statusText || "",
+                        duration: responseCompletedAt - startedAt,
+                        headers: responseHeaders,
+                        body,
+                        rawBody: bodyIsJson && !bodyJsonPreviewUnavailable ? rawBody : null,
+                        bodyIsJson,
+                        bodyJsonPreviewUnavailable,
+                        contentType,
+                        size: responseSize,
+                        truncated,
+                    },
+                    validation: createResponseValidationPreview(validation),
+                });
+            } catch (error) {
+                callback({
+                    ok: false,
+                    msg: error.message,
+                    code: error.code,
+                });
+            }
+        });
+
         // Add a new monitor
         socket.on("add", async (monitor, callback) => {
             try {
@@ -761,6 +883,14 @@ let needSetup = false;
 
                 monitor.conditions = JSON.stringify(monitor.conditions);
 
+                monitor.response_validation_enabled = Boolean(monitor.responseValidationEnabled);
+                monitor.response_validation_rules_json = JSON.stringify(
+                    normalizeResponseValidationRulesForStorage(
+                        monitor.responseValidationRules,
+                        monitor.response_validation_enabled
+                    )
+                );
+
                 monitor.rabbitmqNodes = JSON.stringify(monitor.rabbitmqNodes);
 
                 /*
@@ -771,6 +901,8 @@ let needSetup = false;
                     "humanReadableInterval",
                     "globalpingdnsresolvetypeoptions",
                     "responsecheck",
+                    "responseValidationEnabled",
+                    "responseValidationRules",
                 ];
                 for (const prop of frontendOnlyProperties) {
                     if (prop in monitor) {
@@ -896,6 +1028,13 @@ let needSetup = false;
                 bean.save_response = monitor.saveResponse;
                 bean.save_error_response = monitor.saveErrorResponse;
                 bean.response_max_length = monitor.responseMaxLength;
+                bean.response_validation_enabled = Boolean(monitor.responseValidationEnabled);
+                bean.response_validation_rules_json = JSON.stringify(
+                    normalizeResponseValidationRulesForStorage(
+                        monitor.responseValidationRules,
+                        bean.response_validation_enabled
+                    )
+                );
                 bean.dns_resolve_type = monitor.dns_resolve_type;
                 bean.dns_resolve_server = monitor.dns_resolve_server;
                 bean.pushToken = monitor.pushToken;
@@ -1076,6 +1215,7 @@ let needSetup = false;
                         important,
                         duration,
                         retries,
+                        response_validation_failed,
                         CASE WHEN response IS NULL OR response = '' THEN 0 ELSE 1 END AS has_response
                     FROM heartbeat
                     WHERE monitor_id = ?
@@ -1844,6 +1984,94 @@ let needSetup = false;
     // Start cloudflared at the end if configured
     await cloudflaredAutoStart(cloudflaredToken);
 })();
+
+/** Maximum response-body preview returned by the draft tester. */
+const RESPONSE_VALIDATION_TEST_BODY_MAX_LENGTH = 256 * 1024;
+/** Maximum complete response accepted by the interactive tester. */
+const RESPONSE_VALIDATION_TEST_RESPONSE_MAX_LENGTH = 2 * 1024 * 1024;
+
+/**
+ * Normalize a draft JSON editor value to the stored JSON text expected by a
+ * Monitor instance.
+ * @param {unknown} value Draft string/object value.
+ * @param {unknown} fallback Value used when the draft field is empty.
+ * @returns {string|null} JSON text or null.
+ */
+function normalizeDraftJsonText(value, fallback = null) {
+    if (value === undefined || value === null || value === "") {
+        return fallback === null ? null : JSON.stringify(fallback);
+    }
+    return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/**
+ * Build an unsaved Monitor-shaped instance from the HTTP editor draft. Its
+ * request methods are the same ones used by live monitoring, while unrelated
+ * monitor fields receive safe validation defaults.
+ * @param {object} draft Current monitor editor draft.
+ * @returns {Monitor} Unsaved HTTP monitor instance.
+ * @throws {Error} If the draft or response-validation rules are invalid.
+ */
+function createResponseValidationTestMonitor(draft) {
+    if (!draft || typeof draft !== "object" || Array.isArray(draft)) {
+        throw new Error("Monitor draft must be an object.");
+    }
+    if (draft.type !== "http") {
+        throw new Error("Response validation is currently supported only for HTTP monitors.");
+    }
+
+    const rules = validateResponseValidationRules(draft.responseValidationRules);
+    if (rules.scenarios.length === 0) {
+        throw new Error("At least one response validation scenario is required for a test.");
+    }
+
+    const monitor = Object.create(Monitor.prototype);
+    monitor.name = draft.name || "Response validation test";
+    monitor.type = "http";
+    monitor.url = draft.url;
+    monitor.method = draft.method || "GET";
+    monitor.body = draft.body == null ? null : typeof draft.body === "string" ? draft.body : JSON.stringify(draft.body);
+    monitor.headers = normalizeDraftJsonText(draft.headers);
+    monitor.httpBodyEncoding = draft.httpBodyEncoding || "json";
+    monitor.timeout = Number(draft.timeout) > 0 ? Number(draft.timeout) : 10;
+    monitor.interval = 20;
+    monitor.retryInterval = 20;
+    monitor.maxredirects = Number.isInteger(Number(draft.maxredirects)) ? Number(draft.maxredirects) : 10;
+    monitor.ipFamily = draft.ipFamily;
+    monitor.ignoreTls = Boolean(draft.ignoreTls);
+    monitor.cacheBust = Boolean(draft.cacheBust);
+    const proxyId = Number(draft.proxyId);
+    monitor.proxy_id = Number.isInteger(proxyId) && proxyId > 0 ? proxyId : null;
+
+    monitor.auth_method = draft.authMethod || draft.auth_method || null;
+    monitor.basic_auth_user = draft.basic_auth_user;
+    monitor.basic_auth_pass = draft.basic_auth_pass;
+    monitor.bearer_token = draft.bearer_token;
+    monitor.authDomain = draft.authDomain;
+    monitor.authWorkstation = draft.authWorkstation;
+    monitor.oauth_client_id = draft.oauth_client_id;
+    monitor.oauth_client_secret = draft.oauth_client_secret;
+    monitor.oauth_token_url = draft.oauth_token_url;
+    monitor.oauth_scopes = draft.oauth_scopes;
+    monitor.oauth_audience = draft.oauth_audience;
+    monitor.oauth_auth_method = draft.oauth_auth_method;
+    monitor.tlsCa = draft.tlsCa ?? null;
+    monitor.tlsCert = draft.tlsCert ?? null;
+    monitor.tlsKey = draft.tlsKey ?? null;
+
+    monitor.response_validation_enabled = true;
+    monitor.response_validation_rules_json = JSON.stringify(rules);
+    monitor.accepted_statuscodes_json = JSON.stringify(draft.accepted_statuscodes || ["200-299"]);
+    monitor.response_max_length = Number(draft.responseMaxLength) || 1024;
+
+    const url = monitor.getUrl();
+    if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {
+        throw new Error("A valid HTTP or HTTPS URL is required.");
+    }
+
+    monitor.validate();
+    return monitor;
+}
 
 /**
  * Update notifications for a given monitor

@@ -1,4 +1,5 @@
 const { describe, test } = require("node:test");
+const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
 const { GenericContainer, Wait } = require("testcontainers");
@@ -46,7 +47,28 @@ describe("Database Migration", () => {
                 directory: path.join(__dirname, "../../db/knex_migrations"),
             });
 
-            // Test passes if migrations complete successfully without errors
+            const monitorColumns = await R.knex("monitor").columnInfo();
+            assert.ok(monitorColumns.response_validation_enabled);
+            assert.ok(monitorColumns.response_validation_rules_json);
+
+            const heartbeatColumns = await R.knex("heartbeat").columnInfo();
+            assert.ok(heartbeatColumns.response_validation_failed);
+
+            await R.knex("monitor").insert({ name: "Response validation defaults", type: "http" });
+            const monitor = await R.knex("monitor").where({ name: "Response validation defaults" }).first();
+            assert.strictEqual(Boolean(monitor.response_validation_enabled), false);
+            assert.deepStrictEqual(JSON.parse(monitor.response_validation_rules_json), {
+                version: 1,
+                scenarios: [],
+            });
+
+            await R.knex("heartbeat").insert({
+                monitor_id: monitor.id,
+                status: 1,
+                time: "2026-08-11 00:00:00.000",
+            });
+            const heartbeat = await R.knex("heartbeat").where({ monitor_id: monitor.id }).first();
+            assert.strictEqual(Boolean(heartbeat.response_validation_failed), false);
         } finally {
             // Clean up
             await R.knex.destroy();

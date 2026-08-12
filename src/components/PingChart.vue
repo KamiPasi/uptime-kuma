@@ -45,6 +45,7 @@ import {
 import "chartjs-adapter-dayjs-4";
 import { Line } from "vue-chartjs";
 import { UP, DOWN, PENDING, MAINTENANCE } from "../util.ts";
+import { isResponseValidationFailure } from "../util-frontend.js";
 
 Chart.register(
     LineController,
@@ -396,15 +397,19 @@ export default {
                     x,
                     y: beat.status === DOWN || beat.status === MAINTENANCE || beat.status === PENDING ? 1 : 0,
                 });
-                switch (beat.status) {
-                    case MAINTENANCE:
-                        colorData.push("rgba(23 ,71, 245, 0.41)");
-                        break;
-                    case PENDING:
-                        colorData.push("rgba(245, 182, 23, 0.41)");
-                        break;
-                    default:
-                        colorData.push("rgba(220, 53, 69, 0.41)");
+                if (isResponseValidationFailure(beat)) {
+                    colorData.push("rgba(124, 58, 237, 0.41)");
+                } else {
+                    switch (beat.status) {
+                        case MAINTENANCE:
+                            colorData.push("rgba(23 ,71, 245, 0.41)");
+                            break;
+                        case PENDING:
+                            colorData.push("rgba(245, 182, 23, 0.41)");
+                            break;
+                        default:
+                            colorData.push("rgba(220, 53, 69, 0.41)");
+                    }
                 }
 
                 lastHeartbeatTime = beatTime;

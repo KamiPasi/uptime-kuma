@@ -57,6 +57,7 @@ async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = 
             important,
             duration,
             retries,
+            response_validation_failed,
             CASE WHEN response IS NULL OR response = '' THEN 0 ELSE 1 END AS has_response
         FROM heartbeat
         WHERE monitor_id = ?

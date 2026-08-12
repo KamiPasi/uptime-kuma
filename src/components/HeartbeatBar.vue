@@ -44,6 +44,7 @@
 <script>
 import dayjs from "dayjs";
 import { DOWN, UP, PENDING, MAINTENANCE } from "../util.ts";
+import { isResponseValidationFailure } from "../util-frontend.js";
 import Tooltip from "./Tooltip.vue";
 
 // HeartbeatBar is rendered once per monitor, while its tooltip is teleported to
@@ -303,8 +304,9 @@ export default {
             const validBeats = this.shortBeatList.filter((b) => b !== 0 && b !== null);
             const upCount = validBeats.filter((b) => Number(b.status) === UP).length;
             const downCount = validBeats.filter((b) => Number(b.status) === DOWN).length;
+            const responseValidationFailureCount = validBeats.filter(isResponseValidationFailure).length;
 
-            return `Heartbeat history: ${validBeats.length} checks, ${upCount} up, ${downCount} down`;
+            return `Heartbeat history: ${validBeats.length} checks, ${upCount} up, ${downCount} down, ${responseValidationFailureCount} response validation failures`;
         },
     },
     watch: {
@@ -443,11 +445,13 @@ export default {
             }
 
             const status = Number(beat.status);
+            const responseValidationFailed = isResponseValidationFailure(beat);
 
             return {
-                down: status === DOWN,
+                down: status === DOWN && !responseValidationFailed,
                 pending: status === PENDING,
                 maintenance: status === MAINTENANCE,
+                responseValidationFailed,
             };
         },
 
@@ -457,7 +461,11 @@ export default {
          * @returns {string} Aria label
          */
         getBeatAriaLabel(beat) {
-            switch (beat?.status) {
+            if (isResponseValidationFailure(beat)) {
+                return `Response validation failed at ${this.$root.datetime(beat.time)}`;
+            }
+
+            switch (Number(beat?.status)) {
                 case DOWN:
                     return `Down at ${this.$root.datetime(beat.time)}`;
                 case UP:
@@ -700,6 +708,7 @@ export default {
                 down: rootStyles.getPropertyValue("--bs-danger") || "#dc3545",
                 pending: rootStyles.getPropertyValue("--bs-warning") || "#ffc107",
                 maintenance: rootStyles.getPropertyValue("--maintenance") || "#1d4ed8",
+                responseValidation: rootStyles.getPropertyValue("--response-validation") || "#7c3aed",
                 up: rootStyles.getPropertyValue("--bs-primary") || "#5cdd8b",
             };
 
@@ -780,7 +789,9 @@ export default {
 
             const status = Number(beat.status);
 
-            if (status === DOWN) {
+            if (isResponseValidationFailure(beat)) {
+                return colors.responseValidation;
+            } else if (status === DOWN) {
                 return colors.down;
             } else if (status === PENDING) {
                 return colors.pending;

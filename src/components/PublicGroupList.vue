@@ -73,6 +73,9 @@
                                                 <Status
                                                     v-if="showOnlyLastHeartbeat"
                                                     :status="statusOfLastHeartbeat(monitor.element.id)"
+                                                    :response-validation-failed="
+                                                        responseValidationFailedOfLastHeartbeat(monitor.element.id)
+                                                    "
                                                 />
                                                 <Uptime v-else :monitor="monitor.element" type="24" :pill="true" />
                                                 <a
@@ -293,6 +296,17 @@ export default {
             let heartbeats = this.$root.heartbeatList[monitorId] ?? [];
             let lastHeartbeat = heartbeats[heartbeats.length - 1];
             return lastHeartbeat?.status;
+        },
+
+        /**
+         * Returns whether the last heartbeat failed response validation.
+         * @param {number} monitorId Id of the monitor to inspect
+         * @returns {boolean} Whether the last heartbeat has the marker
+         */
+        responseValidationFailedOfLastHeartbeat(monitorId) {
+            let heartbeats = this.$root.heartbeatList[monitorId] ?? [];
+            let lastHeartbeat = heartbeats[heartbeats.length - 1];
+            return Boolean(lastHeartbeat?.responseValidationFailed);
         },
 
         /**

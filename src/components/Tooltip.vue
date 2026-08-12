@@ -19,7 +19,11 @@
                     <div v-if="content?.msg" class="tooltip-message">{{ content.msg }}</div>
                     <div v-if="showResponsePreview" class="tooltip-response">
                         <button
-                            v-if="content.responsePreviewAvailable && !content.responsePreviewLoading && !hasResponsePreview"
+                            v-if="
+                                content.responsePreviewAvailable &&
+                                !content.responsePreviewLoading &&
+                                !hasResponsePreview
+                            "
                             type="button"
                             class="tooltip-response-load"
                             @click.stop="$emit('load-response')"
@@ -48,6 +52,7 @@
 
 <script>
 import { DOWN, UP, PENDING, MAINTENANCE } from "../util.ts";
+import { isResponseValidationFailure } from "../util-frontend.js";
 
 export default {
     name: "Tooltip",
@@ -138,6 +143,10 @@ export default {
                 return "status-empty";
             }
 
+            if (isResponseValidationFailure(this.content)) {
+                return "status-response-validation";
+            }
+
             switch (Number(this.content.status)) {
                 case DOWN:
                     return "status-down";
@@ -225,9 +234,7 @@ export default {
             }
 
             const desiredTop =
-                nextPosition === "above"
-                    ? this.targetTop - targetGap - tooltipHeight
-                    : this.targetBottom + targetGap;
+                nextPosition === "above" ? this.targetTop - targetGap - tooltipHeight : this.targetBottom + targetGap;
             const maximumTop = Math.max(margin, window.innerHeight - tooltipHeight - margin);
 
             this.actualPosition = nextPosition;
@@ -296,6 +303,10 @@ export default {
 
             &.status-down {
                 color: $danger;
+            }
+
+            &.status-response-validation {
+                color: $response-validation;
             }
 
             &.status-pending {
@@ -368,7 +379,9 @@ export default {
                 cursor: pointer;
                 font-size: 12px;
                 line-height: 1;
-                transition: color 0.15s ease, background-color 0.15s ease;
+                transition:
+                    color 0.15s ease,
+                    background-color 0.15s ease;
 
                 &:hover {
                     background: rgba(255, 255, 255, 0.07);

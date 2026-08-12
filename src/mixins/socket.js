@@ -11,6 +11,7 @@ import {
     isDevContainer,
     getToastSuccessTimeout,
     getToastErrorTimeout,
+    isResponseValidationFailure,
 } from "../util-frontend.js";
 const toast = useToast();
 
@@ -156,6 +157,13 @@ export default {
                 });
             });
 
+            socket.on("monitorNotificationsDisabled", (monitorID) => {
+                if (this.monitorList[monitorID]?.notificationIDList) {
+                    this.monitorList[monitorID].notificationIDList = {};
+                }
+                this.emitter.emit("monitorNotificationsDisabled", monitorID);
+            });
+
             socket.on("deleteMonitorFromList", (monitorID) => {
                 if (this.monitorList[monitorID]) {
                     delete this.monitorList[monitorID];
@@ -216,7 +224,12 @@ export default {
                 // Also toast
                 if (data.important) {
                     if (this.monitorList[data.monitorID] !== undefined) {
-                        if (data.status === 0) {
+                        if (isResponseValidationFailure(data)) {
+                            toast(`[${this.monitorList[data.monitorID].name}] [DOWN] ${data.msg}`, {
+                                toastClassName: "response-validation-toast",
+                                timeout: getToastErrorTimeout(),
+                            });
+                        } else if (data.status === 0) {
                             toast.error(`[${this.monitorList[data.monitorID].name}] [DOWN] ${data.msg}`, {
                                 timeout: getToastErrorTimeout(),
                             });
@@ -769,6 +782,11 @@ export default {
                     result[monitorID] = {
                         text: this.$t("Up"),
                         color: "primary",
+                    };
+                } else if (isResponseValidationFailure(lastHeartBeat)) {
+                    result[monitorID] = {
+                        text: this.$t("Down"),
+                        color: "response-validation",
                     };
                 } else if (lastHeartBeat.status === DOWN) {
                     result[monitorID] = {

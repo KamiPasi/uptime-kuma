@@ -4,6 +4,7 @@
 
 <script>
 import { DOWN, MAINTENANCE, PENDING, UP } from "../util.ts";
+import { isResponseValidationFailure } from "../util-frontend.js";
 
 export default {
     props: {
@@ -48,6 +49,10 @@ export default {
         color() {
             if (this.lastHeartBeat.status === MAINTENANCE) {
                 return "maintenance";
+            }
+
+            if (isResponseValidationFailure(this.lastHeartBeat)) {
+                return "response-validation";
             }
 
             if (this.lastHeartBeat.status === DOWN) {
