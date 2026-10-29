@@ -1307,7 +1307,7 @@
     "mtls-auth-server-ca-placeholder": "Serwer CA",
     "Setup Instructions": "Instrukcja konfiguracji",
     "wsSubprotocolDescription": "Wprowadź listę podprotokołów oddzielonych przecinkami. Więcej informacji na temat podprotokołów można znaleźć w {documentation}",
-    "responseMaxLengthDescription": "Maksymalny rozmiar danych odpowiedzi do przechowywania. Ustaw wartość 0, aby uzyskać nieograniczoną wielkość. Większe odpowiedzi zostaną skrócone. Domyślnie: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Maksymalny rozmiar danych odpowiedzi do przechowywania. Ustaw wartość 0, aby uzyskać nieograniczoną wielkość. Większe odpowiedzi zostaną skrócone. Domyślnie: 0",
     "enableSSL": "Włącz SSL/TLS",
     "mariadbCaCertificateLabel": "Certyfikat CA",
     "mariadbUseSSLHelptext": "Włącz możliwość korzystania z szyfrowanego połączenia z bazą danych. Wymagane w przypadku większości baz danych w chmurze.",

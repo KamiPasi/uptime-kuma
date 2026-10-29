@@ -1358,7 +1358,7 @@
     "No incidents recorded": "Nessun incidente registrato",
     "days": "{n} giorno | {n} giorni",
     "responseMaxLength": "Lunghezza massima risposta (bytes)",
-    "responseMaxLengthDescription": "Dimensione massima della risposta da memorizzare. Imposta 0 per illimitata. Le risposte più grandi verranno troncate. Predefinito: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Dimensione massima della risposta da memorizzare. Imposta 0 per illimitata. Le risposte più grandi verranno troncate. Predefinito: 0",
     "wsCodeDescription": "Per più informazioni sui codici di stato, per favore consulta {rfc6455}",
     "Subprotocol(s)": "Sottoprotocollo/i",
     "saveResponseForNotifications": "Salva la risposta HTTP con esito positivo per le notifiche",

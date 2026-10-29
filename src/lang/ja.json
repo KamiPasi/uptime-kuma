@@ -1246,7 +1246,7 @@
     "Subprotocol(s)": "サブプロトコル",
     "saveResponseForNotifications": "通知用にHTTPの成功レスポンスを保存する",
     "saveErrorResponseForNotifications": "通知用にHTTPエラーレスポンスを保存する",
-    "responseMaxLengthDescription": "保存するレスポンスデータの最大サイズ。無制限にする場合は 0 に設定してください。これを超えるレスポンスは切り捨てられます。デフォルト: 1024 (1KB)",
+    "responseMaxLengthDescription": "保存するレスポンスデータの最大サイズ。無制限にする場合は 0 に設定してください。これを超えるレスポンスは切り捨てられます。デフォルト: 0",
     "Resolver Server(s)": "リゾルバサーバー",
     "Past Incidents": "過去のインシデント",
     "Incident title": "インシデントタイトル",

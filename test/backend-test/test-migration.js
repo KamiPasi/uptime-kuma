@@ -5,6 +5,34 @@ const path = require("path");
 const { GenericContainer, Wait } = require("testcontainers");
 const { MySqlContainer } = require("@testcontainers/mysql");
 
+/**
+ * Verify that the default configuration and schema accept responses larger than TEXT.
+ * @param {import("knex").Knex} db Test database.
+ * @returns {Promise<void>} Resolves after the stored response has been checked.
+ */
+async function verifyFullResponseStorage(db) {
+    await db("monitor").insert({
+        name: "Complete response",
+        type: "http",
+        method: "GET",
+        accepted_statuscodes_json: '["200-299"]',
+        conditions: "[]",
+        response_validation_rules_json: '{"version":1,"scenarios":[]}',
+    });
+    const monitor = await db("monitor").where({ name: "Complete response" }).first();
+    assert.strictEqual(monitor.response_max_length, 0);
+
+    const response = "saved response".repeat(10000);
+    await db("heartbeat").insert({
+        monitor_id: monitor.id,
+        status: 1,
+        time: "2026-10-29 00:00:00.000",
+        response,
+    });
+    const heartbeat = await db("heartbeat").where({ monitor_id: monitor.id }).first();
+    assert.strictEqual(heartbeat.response, response);
+}
+
 describe("Database Migration", () => {
     test("SQLite migrations run successfully from fresh database", async () => {
         const testDbPath = path.join(__dirname, "../../data/test-migration.db");
@@ -56,6 +84,7 @@ describe("Database Migration", () => {
 
             await R.knex("monitor").insert({ name: "Response validation defaults", type: "http" });
             const monitor = await R.knex("monitor").where({ name: "Response validation defaults" }).first();
+            assert.strictEqual(monitor.response_max_length, 0);
             assert.strictEqual(Boolean(monitor.response_validation_enabled), false);
             assert.deepStrictEqual(JSON.parse(monitor.response_validation_rules_json), {
                 version: 1,
@@ -75,6 +104,58 @@ describe("Database Migration", () => {
             if (fs.existsSync(testDbPath)) {
                 fs.unlinkSync(testDbPath);
             }
+        }
+    });
+
+    test("response storage upgrade replaces the old default and preserves custom limits and saved responses", async () => {
+        const Dialect = require("knex/lib/dialects/sqlite3/index.js");
+        Dialect.prototype._driver = () => require("@louislam/sqlite3");
+        const db = require("knex")({
+            client: Dialect,
+            connection: { filename: ":memory:" },
+            useNullAsDefault: true,
+        });
+        const migrationOptions = {
+            directory: path.join(__dirname, "../../db/knex_migrations"),
+            name: "2026-10-29-0000-store-full-monitor-responses.js",
+        };
+
+        try {
+            await db.raw("PRAGMA foreign_keys = ON");
+            await db.schema.createTable("monitor", (table) => {
+                table.increments("id");
+                table.integer("response_max_length").notNullable().defaultTo(1024);
+            });
+            await db.schema.createTable("heartbeat", (table) => {
+                table.increments("id");
+                table.integer("monitor_id").references("id").inTable("monitor").onDelete("CASCADE");
+                table.text("response");
+            });
+            await db("monitor").insert([
+                { id: 1, response_max_length: 1024 },
+                { id: 2, response_max_length: 4096 },
+                { id: 3, response_max_length: 0 },
+            ]);
+            const response = "saved response".repeat(10000);
+            await db("heartbeat").insert({ id: 1, monitor_id: 1, response });
+
+            await db.migrate.up(migrationOptions);
+            await db("monitor").insert({ id: 4 });
+
+            assert.deepStrictEqual(await db("monitor").orderBy("id"), [
+                { id: 1, response_max_length: 0 },
+                { id: 2, response_max_length: 4096 },
+                { id: 3, response_max_length: 0 },
+                { id: 4, response_max_length: 0 },
+            ]);
+            assert.strictEqual((await db("heartbeat").where({ id: 1 }).first()).response, response);
+
+            await db.migrate.down(migrationOptions);
+            await db("monitor").insert({ id: 5 });
+            assert.strictEqual((await db("monitor").where({ id: 5 }).first()).response_max_length, 1024);
+            assert.strictEqual((await db("heartbeat").where({ id: 1 }).first()).response, response);
+        } finally {
+            await db.destroy();
         }
     });
 
@@ -133,7 +214,7 @@ describe("Database Migration", () => {
                     directory: path.join(__dirname, "../../db/knex_migrations"),
                 });
 
-                // Test passes if migrations complete successfully without errors
+                await verifyFullResponseStorage(R.knex);
             } finally {
                 // Clean up
                 try {
@@ -192,7 +273,7 @@ describe("Database Migration", () => {
                     directory: path.join(__dirname, "../../db/knex_migrations"),
                 });
 
-                // Test passes if migrations complete successfully without errors
+                await verifyFullResponseStorage(R.knex);
             } finally {
                 // Clean up
                 try {

@@ -1362,7 +1362,7 @@
     "responseMaxLength": "Maximale Antwortlänge (Bytes)",
     "saveResponseForNotifications": "HTTP-Erfolgsantwort für Benachrichtigungen speichern",
     "saveErrorResponseForNotifications": "HTTP-Fehlerantwort für Benachrichtigungen speichern",
-    "responseMaxLengthDescription": "Maximale Größe der zu speichernden Antwortdaten. 0 für unbegrenzt. Größere Antworten werden gekürzt. Standard: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Maximale Größe der zu speichernden Antwortdaten. 0 für unbegrenzt. Größere Antworten werden gekürzt. Standard: 0",
     "message": "Nachricht",
     "unknownDays": "Unbekannte Tage",
     "Monitors": "{n} Monitor | {n} Monitore",

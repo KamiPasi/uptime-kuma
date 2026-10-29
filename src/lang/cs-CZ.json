@@ -1238,7 +1238,7 @@
     "responseMaxLength": "Maximální délka odpovědi (v bajtech)",
     "saveErrorResponseForNotifications": "Uložit chybovou odpověď HTTP pro oznámení",
     "saveResponseForNotifications": "Uložit úspěšnou odpověď HTTP pro oznámení",
-    "responseMaxLengthDescription": "Maximální velikost dat odpovědi, která se mají uložit. Nastavte na 0 pro neomezenou velikost. Větší odpovědi budou zkráceny. Výchozí hodnota: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Maximální velikost dat odpovědi, která se mají uložit. Nastavte na 0 pro neomezenou velikost. Větší odpovědi budou zkráceny. Výchozí hodnota: 0",
     "sipsakPingWarning": "Abyste mohli používat dohled SIP Options Ping, musíte si na server nainstalovat Uptime Kuma mimo Docker a také klienta Sipsak.",
     "HeadersInvalidFormatBecause": "Hlavička požadavku není platný JSON. Důvod: {error}",
     "BodyInvalidFormatBecause": "Tělo požadavku není platný JSON. Důvod: {error}",

@@ -1352,7 +1352,7 @@
     "saveResponseForNotifications": "Simpan Respon Sukses HTTP bagi Pemberitahuan",
     "saveResponseDescription": "Menyimpan respon HTTP dan membuatnya tersedia bagi templat pemberitahuan sebagai {templateVariable}",
     "responseMaxLength": "Panjang Maks Respon (byte)",
-    "responseMaxLengthDescription": "Ukuran maksimum data respon yang akan disimpan. Atur ke 0 untuk tak terbatas. Respon yang lebih besar akan dipotong. Baku: 1024 (1KB)",
+    "responseMaxLengthDescription": "Ukuran maksimum data respon yang akan disimpan. Atur ke 0 untuk tak terbatas. Respon yang lebih besar akan dipotong. Baku: 0",
     "deletedMonitorsMsg": "Dihapus {n} monitor | Dihapus {n} monitor",
     "noMonitorsPausedMsg": "Tidak ada monitor yang dijeda (tidak ada yang aktif)",
     "noMonitorsResumedMsg": "Tidak ada monitor yang dilanjutkan (tidak ada yang tak aktif)",

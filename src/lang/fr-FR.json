@@ -1434,7 +1434,7 @@
     "saveErrorResponseForNotifications": "Enregistrer la réponse d'erreur HTTP pour les notifications",
     "saveResponseDescription": "Stocke la réponse HTTP et la met à disposition des modèles de notification en tant que {templateVariable}",
     "responseMaxLength": "Longueur maximale de la réponse (octets)",
-    "responseMaxLengthDescription": "Taille maximale des données de réponse à stocker. Indiquez 0 pour une taille illimitée. Les réponses plus volumineuses seront tronquées. Valeur par défaut : 1024 (1 Ko)",
+    "responseMaxLengthDescription": "Taille maximale des données de réponse à stocker. Indiquez 0 pour enregistrer la réponse complète (valeur par défaut). Les réponses plus volumineuses seront tronquées uniquement si une limite est définie.",
     "Actions": "Actions",
     "selectAllMonitorsAria": "Sélectionner toutes les sondes",
     "deselectAllMonitorsAria": "Désélectionnez toutes les sondes",

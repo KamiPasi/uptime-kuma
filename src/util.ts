@@ -68,10 +68,9 @@ export const PING_PER_REQUEST_TIMEOUT_MAX = 60;
 export const PING_PER_REQUEST_TIMEOUT_DEFAULT = 2;
 
 /**
- * Response body length cutoff used by default (10kb)
- * (measured in bytes)
+ * Response body length cutoff used by default (0 means unlimited).
  */
-export const RESPONSE_BODY_LENGTH_DEFAULT = 1024;
+export const RESPONSE_BODY_LENGTH_DEFAULT = 0;
 /**
  * Maximum allowed response body length to store (1mb)
  * (measured in bytes)

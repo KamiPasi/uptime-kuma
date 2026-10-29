@@ -1405,7 +1405,7 @@
     "saveErrorResponseForNotifications": "Uložiť odpoveď HTTP chyby pre oznámenia",
     "saveResponseDescription": "Ukladá odpoveď HTTP a sprístupňuje ju šablónam oznámení ako {templateVariable}",
     "responseMaxLength": "Maximálna dĺžka odpovede (v bajtoch)",
-    "responseMaxLengthDescription": "Maximálna veľkosť údajov odpovede, ktoré sa majú uložiť. Nastavte na 0 pre neobmedzenú veľkosť. Väčšie odpovede budú skrátené. Predvolené nastavenie: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Maximálna veľkosť údajov odpovede, ktoré sa majú uložiť. Nastavte na 0 pre neobmedzenú veľkosť. Väčšie odpovede budú skrátené. Predvolené nastavenie: 0",
     "Only retry if status code check fails": "Opätovať len v prípade, ak kontrola stavového kódu zlyhá",
     "retryOnlyOnStatusCodeFailureDescription": "Ak je táto funkcia povolená, opakované pokusy sa budú vykonávať len v prípade, že kontrola kódu stavu HTTP zlyhá (napr. server je nefunkčný). Ak kontrola kódu stavu prebehne úspešne, ale dotaz JSON zlyhá, monitor bude okamžite označený ako nefunkčný bez opakovaných pokusov.",
     "days": "{n} deň | {n} dni | {n} dní",

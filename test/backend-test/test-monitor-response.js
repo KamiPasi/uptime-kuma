@@ -43,14 +43,25 @@ describe("Monitor response saving", () => {
         assert.strictEqual(await Heartbeat.decodeResponseValue(bean.response), JSON.stringify({ ok: true }));
     });
 
+    test("responses longer than the old storage and preview limits are saved in full by default", async () => {
+        const monitor = Object.create(Monitor.prototype);
+        const response = JSON.stringify({ text: "完整响应😀".repeat(10000), end: "response-end" });
+        const bean = {};
+
+        await monitor.saveResponseData(bean, response);
+
+        assert.strictEqual(await Heartbeat.decodeResponseValue(bean.response), response);
+    });
+
     test("response max length zero does not truncate", async () => {
         const monitor = Object.create(Monitor.prototype);
         monitor.response_max_length = 0;
 
         const bean = {};
-        await monitor.saveResponseData(bean, "unlimited response");
+        const response = "unlimited response".repeat(10000);
+        await monitor.saveResponseData(bean, response);
 
-        assert.strictEqual(await Heartbeat.decodeResponseValue(bean.response), "unlimited response");
+        assert.strictEqual(await Heartbeat.decodeResponseValue(bean.response), response);
     });
 
     test("client heartbeat JSON exposes only response availability", async () => {

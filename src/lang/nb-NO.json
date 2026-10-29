@@ -769,7 +769,7 @@
     "Actions": "Handlinger",
     "deselectAllMonitorsAria": "Fjern markering fra alle overvåkere",
     "grpcMethodDescription": "Metodenavnet skal konverteres til camelCase-format, for eksempel sayHello, check, osv.",
-    "responseMaxLengthDescription": "Maksimal størrelse på responsdata som skal lagres. Sett til 0 for ubegrenset. Større responser vil bli forkortet. Standard: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Maksimal størrelse på responsdata som skal lagres. Sett til 0 for ubegrenset. Større responser vil bli forkortet. Standard: 0",
     "deleteMonitorsMsg": "Er du sikker på at du vil slette de valgte overvåkere?",
     "responseMaxLength": "Maks responslengde (byte)",
     "selectedMonitorCountMsg": "valgt: {n} | valgt: {n}",

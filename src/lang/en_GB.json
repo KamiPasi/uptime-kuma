@@ -198,7 +198,7 @@
     "ignoreSecWebsocketAcceptHeaderDescription": "Allows the server to not reply with Sec-WebSocket-Accept header if the WebSocket upgrade succeeds.",
     "maxRedirectDescription": "Maximum number of redirects to follow. Set to 0 to disable redirects.",
     "saveErrorResponseForNotifications": "Save HTTP Error Response for Notifications",
-    "responseMaxLengthDescription": "Maximum size of response data to store. Set to 0 for unlimited. Larger responses will be truncated. Default: 1024 (1KB)",
+    "responseMaxLengthDescription": "Maximum size of response data to store. Set to 0 to save the complete response (default). Larger responses will be truncated only when a limit is set.",
     "Not available, please setup.": "Not available, please set up.",
     "styleElapsedTime": "Elapsed time under the heartbeat bar",
     "Search Engine Visibility": "Search Engine Visibility",

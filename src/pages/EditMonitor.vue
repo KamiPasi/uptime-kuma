@@ -3274,7 +3274,13 @@ import DockerHostDialog from "../components/DockerHostDialog.vue";
 import RemoteBrowserDialog from "../components/RemoteBrowserDialog.vue";
 import ProxyDialog from "../components/ProxyDialog.vue";
 import TagsManager from "../components/TagsManager.vue";
-import { genSecret, MIN_INTERVAL_SECOND, sleep, TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD } from "../util.ts";
+import {
+    genSecret,
+    MIN_INTERVAL_SECOND,
+    RESPONSE_BODY_LENGTH_DEFAULT,
+    sleep,
+    TYPES_WITH_DOMAIN_EXPIRY_SUPPORT_VIA_FIELD,
+} from "../util.ts";
 import { timeDurationFormatter } from "../util-frontend";
 import isFQDN from "validator/lib/isFQDN";
 import isIP from "validator/lib/isIP";
@@ -3502,7 +3508,7 @@ const monitorDefaults = {
     accepted_statuscodes: defaultValueList.http.accepted_statuscodes,
     saveResponse: false,
     saveErrorResponse: true,
-    responseMaxLength: 1024,
+    responseMaxLength: RESPONSE_BODY_LENGTH_DEFAULT,
     responseValidationEnabled: false,
     responseValidationRules: {
         version: 1,

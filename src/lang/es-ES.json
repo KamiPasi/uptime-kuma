@@ -1328,7 +1328,7 @@
     "responseMaxLength": "Longitud máxima de la respuesta (bytes)",
     "Only retry if status code check fails": "Reintentar solo si la comprobación del código de estado falla",
     "retryOnlyOnStatusCodeFailureDescription": "Si está habilitado, los reintentos solo se realizarán cuando falle la comprobación del código de estado HTTP (por ejemplo, si el servidor está caído). Si la comprobación del código de estado es correcta pero falla la consulta JSON, el monitor se marcará como inactivo inmediatamente, sin reintentos.",
-    "responseMaxLengthDescription": "Tamaño máximo de los datos de la respuesta que se van a almacenar. Establezca 0 para ilimitado. Las respuestas más grandes se truncarán. Valor por defecto: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Tamaño máximo de los datos de la respuesta que se van a almacenar. Establezca 0 para ilimitado. Las respuestas más grandes se truncarán. Valor por defecto: 0",
     "logoutCurrentUser": "Cerrar sesión de {username}",
     "Incident description": "Descripción del incidente",
     "twilioApiKeyHelptext": "La llave de la API es opcional pero recomendada. Puede proporcionar el SID de la cuenta y el Token de Autorizacion desde la consola de Twilio o el SID de la cuenta y la llave de la API junto con el secreto de la llave de la API",

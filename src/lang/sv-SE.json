@@ -1270,7 +1270,7 @@
     "saveResponseForNotifications": "Spara lyckade HTTP-svar för aviseringar",
     "saveResponseDescription": "Lagrar HTTP-svaret och gör det tillgängligt för aviseringsmallar som {templateVariable}",
     "responseMaxLength": "Svarets maxlängd (byte)",
-    "responseMaxLengthDescription": "Maximal storlek på svarsdata att lagra. Ställ in på 0 för obegränsad. Större svar kommer att avkortas. Standard: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Maximal storlek på svarsdata att lagra. Ställ in på 0 för obegränsad. Större svar kommer att avkortas. Standard: 0",
     "logoutCurrentUser": "Logga ut {username}",
     "Resolver Server(s)": "Resolver-server(ar)",
     "Incident description": "Incidentbeskrivning",

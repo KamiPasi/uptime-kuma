@@ -17,31 +17,17 @@
                     </div>
                     <div class="tooltip-time">{{ timeText }}</div>
                     <div v-if="content?.msg" class="tooltip-message">{{ content.msg }}</div>
-                    <div v-if="showResponsePreview" class="tooltip-response">
+                    <div v-if="content.responseAvailable" class="tooltip-response">
                         <button
-                            v-if="
-                                content.responsePreviewAvailable &&
-                                !content.responsePreviewLoading &&
-                                !hasResponsePreview
-                            "
                             type="button"
                             class="tooltip-response-load"
+                            aria-haspopup="dialog"
+                            @mousedown.prevent
                             @click.stop="$emit('load-response')"
                         >
-                            <font-awesome-icon icon="eye" />
+                            <font-awesome-icon icon="code" />
                             <span>{{ $t("viewResponse") }}</span>
                         </button>
-                        <div v-else-if="content.responsePreviewLoading" class="tooltip-response-loading">
-                            <font-awesome-icon icon="spinner" spin />
-                            {{ $t("Loading...") }}
-                        </div>
-                        <div v-else-if="hasResponsePreview" class="tooltip-response-content">
-                            <div class="tooltip-response-title">{{ $t("Response") }}</div>
-                            <div class="tooltip-response-body">{{ content.responsePreview }}</div>
-                            <div v-if="content.responsePreviewTruncated" class="tooltip-response-truncated">
-                                {{ $t("responsePreviewTruncated") }}
-                            </div>
-                        </div>
                     </div>
                 </slot>
             </div>
@@ -105,18 +91,6 @@ export default {
                 top: (this.positioned ? this.calculatedTop : this.targetBottom + 8) + "px",
                 visibility: this.positioned ? "visible" : "hidden",
             };
-        },
-
-        showResponsePreview() {
-            return (
-                Boolean(this.content?.responsePreviewAvailable) ||
-                Boolean(this.content?.responsePreviewLoading) ||
-                this.hasResponsePreview
-            );
-        },
-
-        hasResponsePreview() {
-            return Object.prototype.hasOwnProperty.call(this.content ?? {}, "responsePreview");
         },
 
         statusText() {
@@ -348,24 +322,6 @@ export default {
             font-size: 12px;
             text-align: center;
 
-            .tooltip-response-title {
-                margin-bottom: 4px;
-                font-weight: 600;
-            }
-
-            .tooltip-response-loading,
-            .tooltip-response-truncated {
-                color: #d1d5db;
-                font-size: 11px;
-            }
-
-            .tooltip-response-loading {
-                display: inline-flex;
-                min-height: 30px;
-                align-items: center;
-                gap: 6px;
-            }
-
             .tooltip-response-load {
                 display: inline-flex;
                 min-height: 30px;
@@ -392,25 +348,6 @@ export default {
                     outline: 2px solid $primary;
                     outline-offset: 1px;
                 }
-            }
-
-            .tooltip-response-content {
-                width: min(400px, calc(100vw - 44px));
-                text-align: left;
-            }
-
-            .tooltip-response-body {
-                max-height: min(240px, 40vh);
-                overflow: auto;
-                overflow-wrap: anywhere;
-                overscroll-behavior: contain;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }
-
-            .tooltip-response-truncated {
-                margin-top: 4px;
-                font-style: italic;
             }
         }
     }

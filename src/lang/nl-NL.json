@@ -1343,7 +1343,7 @@
     "slackIncludeGroupNameDescription": "Indien ingeschakeld, het pad van de monitor groep zal toegevoegd worden in notificaties om meer onderscheid te bieden in monitoren met dezelfde naam in verschillende groepen.",
     "slackUseTemplate": "Gebruik eigen berichttemplate",
     "slackUseTemplateDescription": "Indien ingeschakeld zal het bericht met een eigen template verstuurd worden. Je kan liquid templating gebruiken om monitor groepsinformatie in te voegen via monitorJSON.path of monitorJSON.pathName.",
-    "responseMaxLengthDescription": "Maximale grootte van responsdata om op te slaan. Stel in op 0 om geen limiet te zetten. Grotere responses worden afgekapt. Standaard: 1024 (1KB)",
+    "responseMaxLengthDescription": "Maximale grootte van responsdata om op te slaan. Stel in op 0 om geen limiet te zetten. Grotere responses worden afgekapt. Standaard: 0",
     "Resolver Server(s)": "Resolver server(s)",
     "Incident not found or access denied": "Incident niet gevonden of toegang geweigerd",
     "Pinned incidents are shown prominently on the status page": "Gepinde incidenten worden prominent getoond op de statuspagina",

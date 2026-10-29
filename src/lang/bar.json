@@ -886,7 +886,7 @@
     "saveResponseForNotifications": "HTTP-Erfolgsmeldung fia Benachrichtigungen speichern",
     "saveResponseDescription": "Speichert de HTTP-Antwort und stellt's fia dei Benachrichtigungs-Vorlag ois {templateVariable} zur Verfügung",
     "responseMaxLength": "Maximale Antwort-Läng (Bytes)",
-    "responseMaxLengthDescription": "Maximale Greß vo de Antwort-Daten, de gspeichert wern soin. Bei 0 is' wurscht, do gibt's koa Limit. Wenn de Antwort z'groß is, werd's einfach obgschnittn. Standard is 1024 (1KB)",
+    "responseMaxLengthDescription": "Maximale Greß vo de Antwort-Daten, de gspeichert wern soin. Bei 0 is' wurscht, do gibt's koa Limit. Wenn de Antwort z'groß is, werd's einfach obgschnittn. Standard is 0",
     "aliyun-template-requirements-and-parameters": "De aliyun SMS-Vorlag braucht unbedingt de Parameter: {parameters}",
     "Huawei": "Huawei",
     "threemaSenderIdentityFormat": "8 Zeichn, fangt normalerweis mit am * o",

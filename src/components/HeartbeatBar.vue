@@ -36,7 +36,7 @@
             :target-bottom="tooltipTargetBottom"
             @mouseenter="cancelTooltipHide"
             @mouseleave="hideTooltip"
-            @load-response="loadCurrentTooltipResponse"
+            @load-response="viewCurrentTooltipResponse"
         />
     </div>
 </template>
@@ -98,7 +98,6 @@ export default {
             tooltipTargetBottom: 0,
             tooltipTimeoutId: null,
             tooltipHideTimeoutId: null,
-            responseRequestToken: 0,
             // Canvas
             hoveredBeatIndex: -1,
         };
@@ -352,7 +351,6 @@ export default {
         if (activeTooltipOwner === this) {
             activeTooltipOwner = null;
         }
-        this.responseRequestToken++;
     },
     beforeMount() {
         if (this.heartbeatList === null) {
@@ -511,12 +509,9 @@ export default {
                 this.hideOtherTooltip();
                 activeTooltipOwner = this;
 
-                ++this.responseRequestToken;
-
                 this.tooltipContent = {
                     ...beat,
-                    responsePreviewAvailable: this.canLoadResponse(beat),
-                    responsePreviewLoading: false,
+                    responseAvailable: this.canLoadResponse(beat),
                 };
 
                 // Calculate the beat's position within the canvas
@@ -537,78 +532,20 @@ export default {
          * @returns {boolean} Whether to request the response preview.
          */
         canLoadResponse(beat) {
-            const status = Number(beat?.status);
-            return (
-                this.allowResponsePreview &&
-                this.$root.loggedIn &&
-                Boolean(beat?.id) &&
-                Boolean(beat?.hasResponse) &&
-                (status === DOWN || status === UP)
-            );
+            return this.allowResponsePreview && this.$root.loggedIn && Boolean(beat?.id) && Boolean(beat?.hasResponse);
         },
 
         /**
-         * Load the response only after the user clicks the tooltip action.
+         * Open the shared response dialog for the selected heartbeat.
          * @returns {void}
          */
-        loadCurrentTooltipResponse() {
+        viewCurrentTooltipResponse() {
             const beat = this.tooltipContent;
-            if (
-                !beat ||
-                !this.canLoadResponse(beat) ||
-                beat.responsePreviewLoading ||
-                Object.prototype.hasOwnProperty.call(beat, "responsePreview")
-            ) {
+            if (!this.canLoadResponse(beat)) {
                 return;
             }
-
-            const beatIndex = this.hoveredBeatIndex;
-            const responseRequestToken = ++this.responseRequestToken;
-            this.tooltipContent = {
-                ...beat,
-                responsePreviewLoading: true,
-            };
-            this.loadTooltipResponse(beat, beatIndex, responseRequestToken);
-        },
-
-        /**
-         * Load the response for the currently hovered heartbeat.
-         * @param {object} beat Beat data.
-         * @param {number} beatIndex Index of the beat.
-         * @param {number} requestToken Token used to discard stale callbacks.
-         * @returns {void}
-         */
-        loadTooltipResponse(beat, beatIndex, requestToken) {
-            this.$root.getSocket().emit("getHeartbeatResponse", beat.id, (result) => {
-                if (
-                    requestToken !== this.responseRequestToken ||
-                    beatIndex !== this.hoveredBeatIndex ||
-                    beat.id !== this.tooltipContent?.id
-                ) {
-                    return;
-                }
-
-                if (result?.ok && result.data) {
-                    this.tooltipContent = {
-                        ...this.tooltipContent,
-                        responsePreviewAvailable: false,
-                        responsePreview: result.data.response,
-                        responsePreviewTruncated: Boolean(result.data.truncated),
-                        responsePreviewLoading: false,
-                    };
-                } else if (result?.ok) {
-                    this.tooltipContent = {
-                        ...this.tooltipContent,
-                        responsePreviewAvailable: false,
-                        responsePreviewLoading: false,
-                    };
-                } else {
-                    this.tooltipContent = {
-                        ...this.tooltipContent,
-                        responsePreviewLoading: false,
-                    };
-                }
-            });
+            this.hideTooltip();
+            this.$root.emitter.emit("viewHeartbeatResponse", beat);
         },
 
         /**
@@ -662,7 +599,6 @@ export default {
                 this.tooltipTimeoutId = null;
             }
 
-            this.responseRequestToken++;
             this.tooltipVisible = false;
             this.tooltipContent = null;
             if (activeTooltipOwner === this) {

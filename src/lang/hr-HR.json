@@ -1282,7 +1282,7 @@
     "saveResponseForNotifications": "Spremi uspješni HTTP odgovor za obavijesti",
     "saveErrorResponseForNotifications": "Spremi HTTP odgovor s greškom za obavijesti",
     "responseMaxLength": "Maksimalna duljina odgovora (u oktetima)",
-    "responseMaxLengthDescription": "Maksimalna veličina podataka odgovora za pohranu. Postavite na 0 za neograničenu veličinu. Veći odgovori bit će skraćeni. Zadano: 1024 (1 KiB)",
+    "responseMaxLengthDescription": "Maksimalna veličina podataka odgovora za pohranu. Postavite na 0 za neograničenu veličinu. Veći odgovori bit će skraćeni. Zadano: 0",
     "Incident not found or access denied": "Incident nije pronađen ili je pristup odbijen",
     "Incident title": "Naslov incidenta",
     "Resolver Server(s)": "DNS poslužitelj",

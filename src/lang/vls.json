@@ -158,7 +158,7 @@
     "saveErrorResponseForNotifications": "HTTP-foutmelding voor meldingen opslaan",
     "saveResponseDescription": "Slaat het HTTP-antwoord op en maakt het beschikbaar voor meldingssjablonen als {templateVariable}",
     "responseMaxLength": "Antwoord maximale lengte (bytes)",
-    "responseMaxLengthDescription": "Maximale grootte van responsdata om op te slaan. Stel in op 0 om gie limiet te zetten. Grotere responses wordt afgekapt. Standaard: 1024 (1KB)",
+    "responseMaxLengthDescription": "Maximale grootte van responsdata om op te slaan. Stel in op 0 om gie limiet te zetten. Grotere responses wordt afgekapt. Standaard: 0",
     "Accepted Status Codes": "Geaccepteerde statuscodes",
     "Push URL": "Push URL",
     "needPushEvery": "Ge moet deze URL elke {0} seconden aanroepen.",

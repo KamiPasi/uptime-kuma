@@ -46,7 +46,7 @@ if (!semver.satisfies(nodeVersion, requiredNodeVersions)) {
 }
 
 const args = require("args-parser")(process.argv);
-const { sleep, log, getRandomInt, genSecret, isDev } = require("../src/util");
+const { sleep, log, getRandomInt, genSecret, isDev, RESPONSE_BODY_LENGTH_DEFAULT } = require("../src/util");
 const config = require("./config");
 
 process.title = "uptime-kuma";
@@ -1269,14 +1269,10 @@ let needSetup = false;
                     return;
                 }
 
-                const responseCharacters = Array.from(String(decodedResponse));
-                const previewLength = 2000;
-
                 callback({
                     ok: true,
                     data: {
-                        response: responseCharacters.slice(0, previewLength).join(""),
-                        truncated: responseCharacters.length > previewLength,
+                        response: String(decodedResponse),
                     },
                 });
             } catch (e) {
@@ -2062,7 +2058,7 @@ function createResponseValidationTestMonitor(draft) {
     monitor.response_validation_enabled = true;
     monitor.response_validation_rules_json = JSON.stringify(rules);
     monitor.accepted_statuscodes_json = JSON.stringify(draft.accepted_statuscodes || ["200-299"]);
-    monitor.response_max_length = Number(draft.responseMaxLength) || 1024;
+    monitor.response_max_length = Number(draft.responseMaxLength ?? RESPONSE_BODY_LENGTH_DEFAULT);
 
     const url = monitor.getUrl();
     if (!url || (url.protocol !== "http:" && url.protocol !== "https:")) {

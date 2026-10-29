@@ -1294,7 +1294,7 @@
     "ntfyCallHelptext": "Kai suveikia įspėjimas, atlikti telefono skambutį. Nustatykite 'taip', jei norite naudoti pirmąjį patvirtintą numerį, arba įveskite konkretų telefono numerį (pvz., +12223334444). Reikalinga ntfy Pro prenumerata ir patvirtintas telefono numeris.",
     "systemServiceDescriptionWindows": "Tikrina, ar Windows Service Manager paslauga {service_name} veikia",
     "ntfyCall": "Skambutis Telefonu",
-    "responseMaxLengthDescription": "Didžiausias saugomų atsako duomenų dydis. Nustatykite 0, jei norite neriboti. Didesni atsakai bus sutrumpinti. Numatytoji reikšmė: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Didžiausias saugomų atsako duomenų dydis. Nustatykite 0, jei norite neriboti. Didesni atsakai bus sutrumpinti. Numatytoji reikšmė: 0",
     "homeAssistantNotificationActionHelptext": "Pranešimų veiksmų sąrašą rasite Home Assistant skiltyje „Settings > Developer Tools > Actions“. Ieškokite „notify“, kad rastumėte savo veiksmus. Įveskite tik dalį po „notify.“, pvz., veiksmui „notify.mobile_app_xyz“ įveskite „mobile_app_xyz“. Integruotiems mobiliesiems pranešimams ieškokite „Send a notification via mobile_app_xyz“ (ne „Send a notification“).",
     "Failed to copy to clipboard": "Nepavyko nukopijuoti į iškarpinę",
     "aliyun-template-optional-parameters": "Pasirenkami parametrai: {parameters}",

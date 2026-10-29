@@ -117,6 +117,7 @@ test.describe("Monitor Form", () => {
 
         // Expect error response save enabled by default
         await expect(page.getByLabel("Save HTTP Error Response for Notifications")).toBeChecked();
+        await expect(page.getByLabel("Response Max Length (bytes)")).toHaveValue("0");
 
         await page.getByLabel("Save HTTP Success Response for Notifications").check();
         await page.getByLabel("Save HTTP Error Response for Notifications").uncheck();

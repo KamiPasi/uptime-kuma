@@ -325,53 +325,77 @@
                 </div>
             </div>
 
-            <div class="shadow-box table-shadow-box">
-                <div class="dropdown dropdown-clear-data">
-                    <button
-                        class="btn btn-sm btn-outline-danger dropdown-toggle"
-                        type="button"
-                        data-bs-toggle="dropdown"
-                    >
-                        <font-awesome-icon icon="trash" />
-                        {{ $t("Clear Data") }}
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end">
-                        <li>
-                            <button type="button" class="dropdown-item" @click="clearEventsDialog">
-                                {{ $t("Events") }}
-                            </button>
-                        </li>
-                        <li>
-                            <button type="button" class="dropdown-item" @click="clearHeartbeatsDialog">
-                                {{ $t("Heartbeats") }}
-                            </button>
-                        </li>
-                    </ul>
+            <section class="shadow-box event-history">
+                <div class="event-history-header">
+                    <h3>
+                        {{ $t("responseEventHistory") }}
+                        <span class="event-count">{{ importantHeartBeatListLength }}</span>
+                    </h3>
+                    <div class="dropdown dropdown-clear-data">
+                        <button
+                            class="btn btn-sm btn-outline-danger dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                        >
+                            <font-awesome-icon icon="trash" />
+                            {{ $t("Clear Data") }}
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <button type="button" class="dropdown-item" @click="clearEventsDialog">
+                                    {{ $t("Events") }}
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="dropdown-item" @click="clearHeartbeatsDialog">
+                                    {{ $t("Heartbeats") }}
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
-                <table class="table table-borderless table-hover">
+                <table class="table table-borderless event-table">
                     <thead>
                         <tr>
-                            <th>{{ $t("Status") }}</th>
-                            <th>{{ $t("DateTime") }}</th>
-                            <th>{{ $t("Message") }}</th>
+                            <th scope="col" class="event-status">{{ $t("Status") }}</th>
+                            <th scope="col" class="event-time">{{ $t("DateTime") }}</th>
+                            <th scope="col">{{ $t("Message") }}</th>
+                            <th scope="col" class="event-action">{{ $t("responseBody") }}</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(beat, index) in displayedRecords" :key="index" style="padding: 10px">
-                            <td>
+                        <tr v-for="beat in displayedRecords" :key="beat.id" class="event-row">
+                            <td class="event-status">
                                 <Status
                                     :status="beat.status"
                                     :response-validation-failed="beat.responseValidationFailed"
                                 />
                             </td>
-                            <td :class="{ 'border-0': !beat.msg }">
+                            <td class="event-time">
                                 <Datetime :value="beat.time" />
                             </td>
-                            <td class="border-0">{{ beat.msg }}</td>
+                            <td class="event-message">
+                                <span :title="beat.msg">{{ beat.msg }}</span>
+                            </td>
+                            <td class="event-action">
+                                <button
+                                    v-if="beat.hasResponse"
+                                    type="button"
+                                    class="event-response-button"
+                                    :title="$t('viewResponse')"
+                                    :aria-label="$t('viewResponse')"
+                                    aria-haspopup="dialog"
+                                    @click="$root.emitter.emit('viewHeartbeatResponse', beat)"
+                                >
+                                    <font-awesome-icon icon="code" />
+                                    <span>{{ $t("viewResponse") }}</span>
+                                </button>
+                                <span v-else class="event-no-response" :aria-label="$t('responseNotSaved')">—</span>
+                            </td>
                         </tr>
 
-                        <tr v-if="importantHeartBeatListLength === 0">
-                            <td colspan="3">
+                        <tr v-if="importantHeartBeatListLength === 0" class="event-empty">
+                            <td colspan="4">
                                 {{ $t("No important events") }}
                             </td>
                         </tr>
@@ -386,7 +410,7 @@
                         :options="paginationConfig"
                     />
                 </div>
-            </div>
+            </section>
 
             <Confirm ref="confirmPause" :yes-text="$t('Yes')" :no-text="$t('No')" @yes="pauseMonitor">
                 {{ $t("pauseMonitorMsg") }}
@@ -952,6 +976,244 @@ table {
 
     tr {
         transition: all ease-in-out 0.2ms;
+    }
+}
+
+.event-history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 2px 0 18px;
+
+    h3 {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    .dropdown-clear-data {
+        float: none;
+        margin: 0;
+    }
+}
+
+.event-count {
+    padding: 2px 7px;
+    border-radius: 5px;
+    background: #f0f3f6;
+    color: #7b8797;
+    font-size: 11px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.event-table {
+    width: 100%;
+    table-layout: fixed;
+    margin-bottom: 16px;
+
+    th {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e9edf1;
+        color: #8a94a2;
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    td {
+        padding: 8px 12px;
+        vertical-align: middle;
+        border-bottom: 1px solid #f0f2f5;
+    }
+
+    th:first-child,
+    td:first-child {
+        padding-left: 0;
+    }
+
+    .event-status {
+        width: 90px;
+    }
+
+    .event-time {
+        width: 185px;
+        color: #7c8795;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .event-action {
+        width: 128px;
+        padding-right: 0;
+        text-align: right;
+    }
+
+    .event-message span {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 13px;
+    }
+
+    .badge {
+        min-width: 62px;
+        margin: 0;
+        font-size: 10px;
+        line-height: 1.3;
+    }
+
+    .event-row:hover {
+        background: #f8fafb;
+    }
+}
+
+.event-response-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 30px;
+    padding: 4px 9px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: #718093;
+    font-size: 12px;
+    white-space: nowrap;
+    transition:
+        background-color 0.15s,
+        color 0.15s;
+
+    &:hover {
+        color: #187848;
+        background: #e8f8ef;
+    }
+
+    &:focus-visible {
+        outline: 2px solid $primary;
+        outline-offset: 2px;
+    }
+}
+
+.event-no-response {
+    display: inline-block;
+    padding-right: 10px;
+    color: #b4bdc9;
+}
+
+.event-empty td {
+    padding: 32px 0;
+    text-align: center;
+    color: #8a94a2;
+}
+
+.dark .event-history {
+    .event-count {
+        background: #202b3a;
+        color: #91a0b4;
+    }
+
+    .event-table th {
+        border-color: #2a3444;
+        color: #8997aa;
+    }
+
+    .event-table td {
+        border-color: #202b3a;
+    }
+
+    .event-table .event-row:hover {
+        background: #151e2a;
+    }
+
+    .event-response-button {
+        color: #9aa9bc;
+    }
+
+    .event-response-button:hover {
+        color: #85dfae;
+        background: #1c3b30;
+    }
+}
+
+@media (max-width: 700px) {
+    .event-table .event-status {
+        width: 72px;
+    }
+
+    .event-table .event-time {
+        width: 164px;
+    }
+
+    .event-table .event-action {
+        width: 46px;
+    }
+
+    .event-response-button span {
+        display: none;
+    }
+}
+
+@media (max-width: 550px) {
+    .event-history {
+        padding: 16px;
+    }
+
+    .event-history-header {
+        padding-bottom: 12px;
+    }
+
+    .event-table {
+        thead {
+            display: none;
+        }
+
+        .event-row {
+            display: grid;
+            grid-template-columns: 64px minmax(0, 1fr) 34px;
+            gap: 7px 8px;
+            padding: 12px 0;
+            border-bottom: 1px solid #e9edf1;
+        }
+
+        td {
+            width: auto !important;
+            padding: 0;
+            border: 0;
+            min-width: 0;
+        }
+
+        .event-status {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .event-time {
+            grid-column: 2;
+            grid-row: 1;
+            align-self: center;
+        }
+
+        .event-message {
+            grid-column: 1 / 3;
+            grid-row: 2;
+        }
+
+        .event-action {
+            grid-column: 3;
+            grid-row: 1 / 3;
+            align-self: center;
+        }
+    }
+
+    .dark .event-table .event-row {
+        border-color: #2a3444;
     }
 }
 

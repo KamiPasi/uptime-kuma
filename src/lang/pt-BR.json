@@ -1411,7 +1411,7 @@
     "saveErrorResponseForNotifications": "Salvar resposta de erro HTTP para notificações",
     "saveResponseDescription": "Armazena a resposta HTTP e a disponibiliza para os modelos de notificação como {templateVariable}",
     "responseMaxLength": "Comprimento máximo da resposta (bytes)",
-    "responseMaxLengthDescription": "Tamanho máximo dos dados de resposta a serem armazenados. Defina como 0 para ilimitado. Respostas maiores serão truncadas. Padrão: 1024 (1 KB)",
+    "responseMaxLengthDescription": "Tamanho máximo dos dados de resposta a serem armazenados. Defina como 0 para ilimitado. Respostas maiores serão truncadas. Padrão: 0",
     "selectAllMonitorsAria": "Selecionar todos os monitores",
     "resumedMonitorsMsg": "Monitor {n} retomado | Monitores {n} retomados",
     "Only retry if status code check fails": "Só tente novamente se a verificação do código de status falhar",

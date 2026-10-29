@@ -1343,7 +1343,7 @@
     "saveErrorResponseForNotifications": "Sábháil Freagra Earráide HTTP le haghaidh Fógraí",
     "saveResponseDescription": "Stórálann sé an freagra HTTP agus cuireann sé ar fáil é do theimpléid fógra mar {templateVariable}",
     "responseMaxLength": "Fad Uasta Freagra (bearta)",
-    "responseMaxLengthDescription": "Uasmhéid sonraí freagartha le stóráil. Socraigh go 0 le haghaidh neamhtheoranta. Gearrfar freagraí níos mó. Réamhshocrú: 1024 (1KB)",
+    "responseMaxLengthDescription": "Uasmhéid sonraí freagartha le stóráil. Socraigh go 0 le haghaidh neamhtheoranta. Gearrfar freagraí níos mó. Réamhshocrú: 0",
     "steamApiKeyDescriptionAt": "Chun monatóireacht a dhéanamh ar Fhreastalaí Cluichí Steam, teastaíonn eochair Steam Web-API uait. Is féidir leat d’eochair API a chlárú ag {url}",
     "pausedMonitorsMsg": "Monatóir {n} ar sos | Monatóirí {n} ar sos",
     "resumedMonitorsMsg": "Monatóir {n} atosaithe | Monatóirí {n} atosaithe",

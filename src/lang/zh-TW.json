@@ -1241,7 +1241,7 @@
     "saveErrorResponseForNotifications": "保存 HTTP 錯誤回應以用於通知",
     "saveResponseDescription": "儲存 HTTP 回應，並將其作為 {templateVariable} 提供給通知範本。",
     "responseMaxLength": "響應最大長度(bytes)",
-    "responseMaxLengthDescription": "要儲存的回應資料的最大大小。設定為 0 表示無限制。較大的回應將被截斷。預設值：1024 (1KB)",
+    "responseMaxLengthDescription": "要儲存的回應資料的最大大小。設定為 0 表示無限制。較大的回應將被截斷。預設值：0",
     "example": "範例",
     "Result": "結果",
     "Resolve": "解決",
