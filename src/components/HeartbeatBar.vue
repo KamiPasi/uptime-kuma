@@ -98,6 +98,7 @@ export default {
             tooltipTargetBottom: 0,
             tooltipTimeoutId: null,
             tooltipHideTimeoutId: null,
+            historyVisible: false,
             // Canvas
             hoveredBeatIndex: -1,
         };
@@ -309,6 +310,14 @@ export default {
         },
     },
     watch: {
+        "$root.socket.authenticated"(authenticated) {
+            if (authenticated) {
+                this.requestHistory();
+            }
+        },
+        monitorId() {
+            this.requestHistory();
+        },
         beatList: {
             handler() {
                 // Only handle the slide animation, drawCanvas is triggered by shortBeatList watcher
@@ -340,6 +349,7 @@ export default {
         },
     },
     unmounted() {
+        this.historyObserver?.disconnect();
         window.removeEventListener("resize", this.resize);
         // Clean up tooltip timeout
         if (this.tooltipTimeoutId) {
@@ -387,8 +397,28 @@ export default {
         this.$nextTick(() => {
             this.drawCanvas();
         });
+
+        if (this.heartbeatList === null && typeof IntersectionObserver !== "undefined") {
+            this.historyObserver = new IntersectionObserver((entries) => {
+                this.historyVisible = entries.some((entry) => entry.isIntersecting);
+                this.requestHistory();
+            });
+            this.historyObserver.observe(this.$refs.wrap);
+        } else {
+            this.historyVisible = true;
+            this.requestHistory();
+        }
     },
     methods: {
+        /**
+         * Load history only for a visible authenticated monitor.
+         * @returns {void}
+         */
+        requestHistory() {
+            if (this.heartbeatList === null && this.historyVisible) {
+                this.$root.requestHeartbeatHistory(this.monitorId);
+            }
+        },
         /**
          * Resize the heartbeat bar
          * @returns {void}

@@ -77,6 +77,60 @@ async function sendHeartbeatList(socket, monitorID, toUser = false, overwrite = 
 }
 
 /**
+ * Send one recent heartbeat per monitor after the dashboard is painted.
+ * @param {Socket} socket Authenticated socket.
+ * @param {Array<number|string>} monitorIDs Authorized monitor ids.
+ * @returns {Promise<void>}
+ */
+async function sendHeartbeatLists(socket, monitorIDs) {
+    const userID = socket.userID;
+    const result = {};
+    const chunkSize = 500;
+    for (let i = 0; i < monitorIDs.length; i += chunkSize) {
+        const chunk = monitorIDs.slice(i, i + chunkSize);
+        const placeholders = chunk.map(() => "?").join(",");
+        const rows = await R.getAll(
+            `SELECT h.id, h.monitor_id, h.status, h.msg, h.time, h.ping,
+                    h.important, h.duration, h.retries, h.response_validation_failed,
+                    CASE WHEN h.response IS NULL OR h.response = '' THEN 0 ELSE 1 END AS has_response
+             FROM monitor m
+             JOIN heartbeat h ON h.id = (
+                 SELECT id FROM heartbeat WHERE monitor_id = m.id ORDER BY time DESC, id DESC LIMIT 1
+             )
+             WHERE m.user_id = ? AND m.id IN (${placeholders})`,
+            [userID, ...chunk]
+        );
+        for (const row of rows) {
+            result[row.monitor_id] = [Heartbeat.toClientJSON(row)];
+        }
+    }
+    if (socket.userID === userID && socket.connected) {
+        socket.emit("heartbeatLists", result);
+    }
+}
+
+/**
+ * Read recent history for a visible monitor owned by the authenticated user.
+ * @param {number} monitorID Monitor id.
+ * @param {number} userID Authenticated owner.
+ * @returns {Promise<object[]>} Client-safe heartbeats, oldest first.
+ */
+async function getHeartbeatHistory(monitorID, userID) {
+    const rows = await R.getAll(
+        `SELECT h.id, h.monitor_id, h.status, h.msg, h.time, h.ping,
+                h.important, h.duration, h.retries, h.response_validation_failed,
+                CASE WHEN h.response IS NULL OR h.response = '' THEN 0 ELSE 1 END AS has_response
+         FROM heartbeat h
+         INNER JOIN monitor m ON m.id = h.monitor_id
+         WHERE h.monitor_id = ? AND m.user_id = ?
+         ORDER BY h.time DESC, h.id DESC
+         LIMIT 100`,
+        [monitorID, userID]
+    );
+    return rows.reverse().map((row) => Heartbeat.toClientJSON(row));
+}
+
+/**
  * Important Heart beat list (aka event list)
  * @param {Socket} socket Socket.io instance
  * @param {number} monitorID ID of monitor to send heartbeat history
@@ -252,6 +306,8 @@ module.exports = {
     sendNotificationList,
     sendImportantHeartbeatList,
     sendHeartbeatList,
+    sendHeartbeatLists,
+    getHeartbeatHistory,
     sendProxyList,
     sendAPIKeyList,
     sendInfo,

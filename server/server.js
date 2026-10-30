@@ -192,6 +192,8 @@ const testMode = !!args["test"] || false;
 const {
     sendNotificationList,
     sendHeartbeatList,
+    sendHeartbeatLists,
+    getHeartbeatHistory,
     sendInfo,
     sendProxyList,
     sendDockerHostList,
@@ -199,6 +201,8 @@ const {
     sendRemoteBrowserList,
     sendMonitorTypeList,
 } = require("./client");
+const { DeferredListsSender } = require("./login-lists");
+const { MonitorStats } = require("./monitor-stats");
 const { statusPageSocketHandler } = require("./socket-handlers/status-page-socket-handler");
 const { databaseSocketHandler } = require("./socket-handlers/database-socket-handler");
 const { remoteBrowserSocketHandler } = require("./socket-handlers/remote-browser-socket-handler");
@@ -398,6 +402,7 @@ let needSetup = false;
 
     log.debug("server", "Adding socket handler");
     io.on("connection", async (socket) => {
+        socket.once("disconnect", () => socket.dashboardListsSender?.dispose());
         await sendInfo(socket, true);
 
         if (needSetup) {
@@ -546,6 +551,11 @@ let needSetup = false;
 
             socket.leave(socket.userID);
             socket.userID = null;
+            if (socket.dashboardListsSender) {
+                socket.dashboardListsSender.dispose();
+                socket.removeListener("dashboardRendered", socket.dashboardListsSender.onRendered);
+                socket.dashboardListsSender = null;
+            }
 
             if (typeof callback === "function") {
                 callback();
@@ -1166,11 +1176,33 @@ let needSetup = false;
                     ok: true,
                     monitor: monitor.toJSON(preloadData),
                 });
+                // Detail-only information must not hold up authentication or the monitor list.
+                await Promise.allSettled([
+                    Monitor.sendCertInfo(io, monitor.id, socket.userID),
+                    Monitor.sendDomainInfo(io, monitor.id, socket.userID),
+                ]);
             } catch (e) {
                 callback({
                     ok: false,
                     msg: e.message,
                 });
+            }
+        });
+
+        socket.on("getHeartbeatHistory", async (monitorID, callback) => {
+            try {
+                checkLogin(socket);
+                const id = Number(monitorID);
+                if (!Number.isSafeInteger(id) || id <= 0) {
+                    throw new Error("Invalid monitor ID.");
+                }
+                const userID = socket.userID;
+                const data = await getHeartbeatHistory(id, userID);
+                if (socket.userID === userID) {
+                    callback({ ok: true, data });
+                }
+            } catch (error) {
+                callback({ ok: false, msg: error.message });
             }
         });
 
@@ -2120,6 +2152,11 @@ async function afterLogin(socket, user) {
     socket.userID = user.id;
     socket.join(user.id);
 
+    if (socket.dashboardListsSender) {
+        socket.dashboardListsSender.dispose();
+        socket.removeListener("dashboardRendered", socket.dashboardListsSender.onRendered);
+    }
+
     let monitorList = await server.sendMonitorList(socket);
     await Promise.allSettled([
         sendInfo(socket),
@@ -2134,13 +2171,32 @@ async function afterLogin(socket, user) {
 
     await StatusPage.sendStatusPageList(io, socket);
 
-    const monitorPromises = [];
-    for (let monitorID in monitorList) {
-        monitorPromises.push(sendHeartbeatList(socket, monitorID));
-        monitorPromises.push(Monitor.sendStats(io, monitorID, user.id));
+    if (socket.handshake?.auth?.dashboardProtocol === 1) {
+        const monitorIDs = Object.keys(monitorList);
+        const deferredLists = new DeferredListsSender({
+            send: async () => {
+                if (!socket.connected || socket.userID !== user.id) {
+                    return;
+                }
+                await sendHeartbeatLists(socket, monitorIDs);
+                const stats = await MonitorStats.compute(monitorIDs);
+                if (socket.connected && socket.userID === user.id && socket.dashboardListsSender === deferredLists) {
+                    socket.emit("stats", stats);
+                }
+            },
+            onError: (error) => log.error("monitor", "Failed to send dashboard data: " + error.message),
+        });
+        socket.dashboardListsSender = deferredLists;
+        socket.once("dashboardRendered", deferredLists.onRendered);
+    } else {
+        // Keep already-open clients working while a deployment changes the frontend protocol.
+        const monitorPromises = [];
+        for (const monitorID in monitorList) {
+            monitorPromises.push(sendHeartbeatList(socket, monitorID));
+            monitorPromises.push(Monitor.sendStats(io, monitorID, user.id));
+        }
+        await Promise.all(monitorPromises);
     }
-
-    await Promise.all(monitorPromises);
 
     // Set server timezone from client browser if not set
     // It should be run once only

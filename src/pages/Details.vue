@@ -527,12 +527,18 @@ export default {
                 code: "",
             },
             deleteChildrenMonitors: false,
+            // Full monitor loaded on demand: the dashboard list only carries its summary fields
+            fetchedMonitor: null,
         };
     },
     computed: {
+        monitorSummary() {
+            return this.$root.monitorList[this.$route.params.id];
+        },
         monitor() {
-            let id = this.$route.params.id;
-            return this.$root.monitorList[id];
+            // The dashboard list only carries the fields the list needs, so this page
+            // renders nothing until the full monitor has been fetched
+            return this.fetchedMonitor;
         },
 
         /**
@@ -613,7 +619,7 @@ export default {
         },
 
         group() {
-            return this.monitor.path.slice(0, -1).join(" / ");
+            return (this.monitor.path || []).slice(0, -1).join(" / ");
         },
 
         pushURL() {
@@ -634,8 +640,22 @@ export default {
     },
 
     watch: {
+        monitorSummary(summary) {
+            if (this.fetchedMonitor && summary) {
+                Object.assign(this.fetchedMonitor, summary);
+            }
+        },
+        "$root.socket.authenticated"(authenticated) {
+            if (authenticated) {
+                this.fetchMonitor(this.$route.params.id);
+            }
+        },
         page(to) {
             this.getImportantHeartbeatListPaged();
+        },
+
+        "$route.params.id"(id) {
+            this.fetchMonitor(id);
         },
 
         monitor(to) {
@@ -653,8 +673,10 @@ export default {
 
     mounted() {
         this.getImportantHeartbeatListLength();
+        this.fetchMonitor(this.$route.params.id);
 
         this.$root.emitter.on("newImportantHeartbeat", this.onNewImportantHeartbeat);
+        this.$root.emitter.on("monitorNotificationsDisabled", this.onNotificationsDisabled);
 
         if (this.monitor && this.monitor.type === "push") {
             if (this.lastHeartBeat.status === -1) {
@@ -666,10 +688,38 @@ export default {
 
     beforeUnmount() {
         this.$root.emitter.off("newImportantHeartbeat", this.onNewImportantHeartbeat);
+        this.$root.emitter.off("monitorNotificationsDisabled", this.onNotificationsDisabled);
     },
 
     methods: {
         getResBaseURL,
+        /**
+         * Keep detail notification settings in sync after response validation disables them.
+         * @param {number} monitorID Updated monitor id.
+         * @returns {void}
+         */
+        onNotificationsDisabled(monitorID) {
+            if (this.fetchedMonitor?.id === Number(monitorID)) {
+                this.fetchedMonitor.notificationIDList = {};
+            }
+        },
+        /**
+         * Load the full monitor for this page. The dashboard list is a summary only.
+         * @param {string} id Monitor id
+         * @returns {void}
+         */
+        fetchMonitor(id) {
+            this.fetchedMonitor = null;
+            const socket = this.$root.getSocket();
+            if (!socket || !this.$root.socket.authenticated) {
+                return;
+            }
+            socket.emit("getMonitor", id, (res) => {
+                if (res.ok && this.$route.params.id === id) {
+                    this.fetchedMonitor = res.monitor;
+                }
+            });
+        },
         /**
          * Request a test notification be sent for this monitor
          * @returns {void}
@@ -693,6 +743,9 @@ export default {
          */
         resumeMonitor() {
             this.$root.getSocket().emit("resumeMonitor", this.monitor.id, (res) => {
+                if (res.ok) {
+                    this.setFetchedMonitorActive(true);
+                }
                 this.$root.toastRes(res);
             });
         },
@@ -703,8 +756,23 @@ export default {
          */
         pauseMonitor() {
             this.$root.getSocket().emit("pauseMonitor", this.monitor.id, (res) => {
+                if (res.ok) {
+                    this.setFetchedMonitorActive(false);
+                }
                 this.$root.toastRes(res);
             });
+        },
+
+        /**
+         * Keep the fetched (full) monitor in sync with an active-state change.
+         * The dashboard list is a summary, so this page keeps its own copy.
+         * @param {boolean} active New active state
+         * @returns {void}
+         */
+        setFetchedMonitorActive(active) {
+            if (this.fetchedMonitor) {
+                this.fetchedMonitor.active = active;
+            }
         },
 
         /**

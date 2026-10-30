@@ -1,9 +1,13 @@
+import { markRaw } from "vue";
 import { io } from "socket.io-client";
 import { useToast } from "vue-toastification";
 import jwtDecode from "jwt-decode";
 import Favico from "favico.js";
 import dayjs from "dayjs";
 import mitt from "mitt";
+import { BeatVersionThrottle } from "../beat-version-throttle.mjs";
+import { applyBeat, beatStatusEntry } from "../beat-state.mjs";
+import { claimHeartbeatHistory, releaseHeartbeatHistory, mergeHeartbeatHistory } from "../heartbeat-history.mjs";
 
 import { DOWN, MAINTENANCE, PENDING, UP } from "../util.ts";
 import {
@@ -37,6 +41,7 @@ export default {
                 connected: false,
                 connectCount: 0,
                 initedSocketIO: false,
+                authenticated: false,
             },
             username: null,
             remember: localStorage.remember !== "0",
@@ -47,6 +52,13 @@ export default {
             maintenanceList: {},
             apiKeyList: {},
             heartbeatList: {},
+            lastHeartbeatList: {},
+            statusList: {},
+            lastBeatRaw: markRaw({}),
+            heartbeatVersion: 0,
+            heartbeatVersionThrottle: markRaw(new BeatVersionThrottle(() => this.heartbeatVersion++)),
+            heartbeatHistoryRequested: markRaw(new Set()),
+            monitorListLoaded: false,
             avgPingList: {},
             uptimeList: {},
             tlsInfoList: {},
@@ -76,7 +88,77 @@ export default {
         this.initSocketIO();
     },
 
+    beforeUnmount() {
+        this.heartbeatVersionThrottle.cancel();
+    },
+
     methods: {
+        /**
+         * Update only the monitor whose latest heartbeat changed.
+         * @param {number|string} monitorID Monitor id.
+         * @param {object} beat Latest heartbeat.
+         * @returns {void}
+         */
+        updateLastBeat(monitorID, beat) {
+            applyBeat(this, monitorID, beat, beatStatusEntry(this.$t.bind(this), beat));
+            this.heartbeatVersionThrottle.schedule();
+        },
+
+        /**
+         * Allow deferred data after authentication and the first list paint.
+         * @returns {void}
+         */
+        markDashboardRendered() {
+            if (
+                !this.socket.authenticated ||
+                !this.monitorListLoaded ||
+                !socket?.connected ||
+                socket.dashboardRendered
+            ) {
+                return;
+            }
+            const connectionID = socket.id;
+            this.$nextTick(() => {
+                requestAnimationFrame(() =>
+                    requestAnimationFrame(() => {
+                        if (socket?.id === connectionID && this.socket.authenticated && !socket.dashboardRendered) {
+                            socket.dashboardRendered = true;
+                            socket.emit("dashboardRendered");
+                        }
+                    })
+                );
+            });
+        },
+
+        /**
+         * Fetch history once for a visible row or an open monitor detail.
+         * @param {number|string} monitorID Monitor id.
+         * @returns {void}
+         */
+        requestHeartbeatHistory(monitorID) {
+            const id = Number(monitorID);
+            if (
+                !socket?.connected ||
+                !this.socket.authenticated ||
+                !claimHeartbeatHistory(this.heartbeatHistoryRequested, id)
+            ) {
+                return;
+            }
+            const connectionID = socket.id;
+            socket.timeout(15000).emit("getHeartbeatHistory", id, (error, res) => {
+                if (socket.id !== connectionID || !this.socket.authenticated) {
+                    return;
+                }
+                if (error || !res?.ok) {
+                    releaseHeartbeatHistory(this.heartbeatHistoryRequested, id);
+                    return;
+                }
+                const beats = mergeHeartbeatHistory(res.data, this.heartbeatList[id] ?? []);
+                this.heartbeatList[id] = beats;
+                this.updateLastBeat(id, beats.at(-1));
+            });
+        },
+
         /**
          * Initialize connection to socket server
          * @param {boolean} bypass Should the check for if we
@@ -118,10 +200,16 @@ export default {
                 url = undefined;
             }
 
-            socket = io(url);
+            socket = io(url, {
+                auth: { dashboardProtocol: 1 },
+                transports: ["websocket", "polling"],
+                tryAllTransports: true,
+            });
 
             socket.on("info", (info) => {
-                this.info = info;
+                // The pre-login packet omits the version. Preserve it on reconnect
+                // instead of treating an absent version as a server upgrade.
+                this.info = { ...this.info, ...info };
             });
 
             socket.on("setup", (monitorID, data) => {
@@ -130,9 +218,11 @@ export default {
 
             socket.on("autoLogin", (monitorID, data) => {
                 this.loggedIn = true;
+                this.socket.authenticated = true;
                 this.storage().token = "autoLogin";
                 this.socket.token = "autoLogin";
                 this.allowLoginDialog = false;
+                this.markDashboardRendered();
             });
 
             socket.on("loginRequired", () => {
@@ -148,6 +238,8 @@ export default {
             socket.on("monitorList", (data) => {
                 this.assignMonitorUrlParser(data);
                 this.monitorList = data;
+                this.monitorListLoaded = true;
+                this.markDashboardRendered();
             });
 
             socket.on("updateMonitorIntoList", (data) => {
@@ -168,6 +260,12 @@ export default {
                 if (this.monitorList[monitorID]) {
                     delete this.monitorList[monitorID];
                 }
+                delete this.heartbeatList[monitorID];
+                delete this.lastHeartbeatList[monitorID];
+                delete this.statusList[monitorID];
+                delete this.lastBeatRaw[monitorID];
+                this.heartbeatHistoryRequested.delete(Number(monitorID));
+                this.heartbeatVersionThrottle.schedule();
             });
 
             socket.on("monitorTypeList", (data) => {
@@ -215,6 +313,7 @@ export default {
                 }
 
                 this.heartbeatList[data.monitorID].push(data);
+                this.updateLastBeat(data.monitorID, data);
 
                 if (this.heartbeatList[data.monitorID].length >= 150) {
                     this.heartbeatList[data.monitorID].shift();
@@ -250,7 +349,27 @@ export default {
                 if (!(monitorID in this.heartbeatList) || overwrite) {
                     this.heartbeatList[monitorID] = data;
                 } else {
-                    this.heartbeatList[monitorID] = data.concat(this.heartbeatList[monitorID]);
+                    this.heartbeatList[monitorID] = mergeHeartbeatHistory(data, this.heartbeatList[monitorID]);
+                }
+                this.updateLastBeat(monitorID, this.heartbeatList[monitorID].at(-1));
+            });
+
+            socket.on("heartbeatLists", (data) => {
+                for (const [monitorID, history] of Object.entries(data)) {
+                    const beats = mergeHeartbeatHistory(history, this.heartbeatList[monitorID] ?? []);
+                    this.heartbeatList[monitorID] = beats;
+                    this.updateLastBeat(monitorID, beats.at(-1));
+                }
+                this.heartbeatVersionThrottle.cancel();
+                this.heartbeatVersion++;
+            });
+
+            socket.on("stats", (data) => {
+                for (const [monitorID, stats] of Object.entries(data)) {
+                    this.avgPingList[monitorID] = stats.avgPing;
+                    this.uptimeList[`${monitorID}_24`] = stats.uptime24;
+                    this.uptimeList[`${monitorID}_720`] = stats.uptime720;
+                    this.uptimeList[`${monitorID}_1y`] = stats.uptime1y;
                 }
             });
 
@@ -282,6 +401,7 @@ export default {
                 console.log("disconnect");
                 this.connectionErrorMsg = `${this.$t("Lost connection to the socket server.")} ${this.$t("Reconnecting...")}`;
                 this.socket.connected = false;
+                this.socket.authenticated = false;
             });
 
             socket.on("connect", () => {
@@ -289,6 +409,8 @@ export default {
                 this.socket.connectCount++;
                 this.socket.connected = true;
                 this.showReverseProxyGuide = false;
+                this.socket.authenticated = false;
+                socket.dashboardRendered = false;
 
                 // Reset Heartbeat list if it is re-connect
                 if (this.socket.connectCount >= 2) {
@@ -439,7 +561,9 @@ export default {
                         this.storage().token = res.token;
                         this.socket.token = res.token;
                         this.loggedIn = true;
+                        this.socket.authenticated = true;
                         this.username = this.getJWTPayload()?.username;
+                        this.markDashboardRendered();
 
                         // Trigger Chrome Save Password
                         history.pushState({}, "");
@@ -463,7 +587,9 @@ export default {
                     this.logout();
                 } else {
                     this.loggedIn = true;
+                    this.socket.authenticated = true;
                     this.username = this.getJWTPayload()?.username;
+                    this.markDashboardRendered();
                 }
             });
         },
@@ -477,6 +603,7 @@ export default {
             this.storage().removeItem("token");
             this.socket.token = null;
             this.loggedIn = false;
+            this.socket.authenticated = false;
             this.username = null;
             this.clearData();
         },
@@ -679,6 +806,13 @@ export default {
         clearData() {
             console.log("reset heartbeat list");
             this.heartbeatList = {};
+            this.lastHeartbeatList = {};
+            this.statusList = {};
+            this.lastBeatRaw = markRaw({});
+            this.heartbeatVersion = 0;
+            this.heartbeatVersionThrottle.cancel();
+            this.heartbeatHistoryRequested = markRaw(new Set());
+            this.monitorListLoaded = false;
         },
 
         /**
@@ -754,63 +888,6 @@ export default {
             }
         },
 
-        lastHeartbeatList() {
-            let result = {};
-
-            for (let monitorID in this.heartbeatList) {
-                let index = this.heartbeatList[monitorID].length - 1;
-                result[monitorID] = this.heartbeatList[monitorID][index];
-            }
-
-            return result;
-        },
-
-        statusList() {
-            let result = {};
-
-            let unknown = {
-                text: this.$t("Unknown"),
-                color: "secondary",
-            };
-
-            for (let monitorID in this.lastHeartbeatList) {
-                let lastHeartBeat = this.lastHeartbeatList[monitorID];
-
-                if (!lastHeartBeat) {
-                    result[monitorID] = unknown;
-                } else if (lastHeartBeat.status === UP) {
-                    result[monitorID] = {
-                        text: this.$t("Up"),
-                        color: "primary",
-                    };
-                } else if (isResponseValidationFailure(lastHeartBeat)) {
-                    result[monitorID] = {
-                        text: this.$t("Down"),
-                        color: "response-validation",
-                    };
-                } else if (lastHeartBeat.status === DOWN) {
-                    result[monitorID] = {
-                        text: this.$t("Down"),
-                        color: "danger",
-                    };
-                } else if (lastHeartBeat.status === PENDING) {
-                    result[monitorID] = {
-                        text: this.$t("Pending"),
-                        color: "warning",
-                    };
-                } else if (lastHeartBeat.status === MAINTENANCE) {
-                    result[monitorID] = {
-                        text: this.$t("statusMaintenance"),
-                        color: "maintenance",
-                    };
-                } else {
-                    result[monitorID] = unknown;
-                }
-            }
-
-            return result;
-        },
-
         stats() {
             let result = {
                 active: 0,
@@ -822,8 +899,11 @@ export default {
                 pause: 0,
             };
 
+            // Counters refresh once per second instead of recounting on every packet.
+            void this.heartbeatVersion;
+            const raw = this.lastBeatRaw;
             for (let monitorID in this.$root.monitorList) {
-                let beat = this.$root.lastHeartbeatList[monitorID];
+                let beat = raw[monitorID];
                 let monitor = this.$root.monitorList[monitorID];
 
                 if (monitor && !monitor.active) {

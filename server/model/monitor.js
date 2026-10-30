@@ -2029,19 +2029,104 @@ class Monitor extends BeanModel {
 
         if (monitorData.length > 0) {
             const monitorIDs = monitorData.map((monitor) => monitor.id);
-            const notifications = await Monitor.getMonitorNotification(monitorIDs);
-            const tags = await Monitor.getMonitorTag(monitorIDs);
-            const maintenanceStatuses = await Promise.all(
-                monitorData.map((monitor) => Monitor.isUnderMaintenance(monitor.id))
-            );
-            const childrenIDs = await Promise.all(monitorData.map((monitor) => Monitor.getAllChildrenIDs(monitor.id)));
-            const activeStatuses = await Promise.all(
-                monitorData.map((monitor) => Monitor.isActive(monitor.id, monitor.active))
-            );
-            const forceInactiveStatuses = await Promise.all(
-                monitorData.map((monitor) => Monitor.isParentActive(monitor.id))
-            );
-            const paths = await Promise.all(monitorData.map((monitor) => Monitor.getAllPath(monitor.id, monitor.name)));
+            const [notifications, tags, allMonitors, maintenanceRows] = await Promise.all([
+                Monitor.getMonitorNotification(monitorIDs),
+                Monitor.getMonitorTag(monitorIDs),
+                R.getAll("SELECT id, name, parent, active FROM monitor"),
+                R.getAll("SELECT monitor_id, maintenance_id FROM monitor_maintenance"),
+            ]);
+
+            const byId = new Map();
+            const childrenById = new Map();
+            for (const row of allMonitors) {
+                byId.set(row.id, row);
+                const key = row.parent ?? null;
+                if (!childrenById.has(key)) {
+                    childrenById.set(key, []);
+                }
+                childrenById.get(key).push(row);
+            }
+
+            // All hierarchy work below is memoized in memory, so 5000 monitors cost
+            // a fixed number of queries instead of ~6 queries per monitor
+            const parentActiveCache = new Map();
+            const isParentActive = (id) => {
+                if (parentActiveCache.has(id)) {
+                    return parentActiveCache.get(id);
+                }
+                const node = byId.get(id);
+                const parent = node?.parent ? byId.get(node.parent) : null;
+                const result = !parent ? true : parent.active === 1 && isParentActive(parent.id);
+                parentActiveCache.set(id, result);
+                return result;
+            };
+
+            const childrenCache = new Map();
+            const allChildrenIDs = (id) => {
+                if (childrenCache.has(id)) {
+                    return childrenCache.get(id);
+                }
+                const result = [];
+                for (const child of childrenById.get(id) ?? []) {
+                    result.push(child.id);
+                    result.push(...allChildrenIDs(child.id));
+                }
+                childrenCache.set(id, result);
+                return result;
+            };
+
+            const pathCache = new Map();
+            const pathOf = (id) => {
+                if (pathCache.has(id)) {
+                    return pathCache.get(id);
+                }
+                const node = byId.get(id);
+                if (!node) {
+                    return [];
+                }
+                const parent = node.parent ? byId.get(node.parent) : null;
+                const result = parent ? [...pathOf(parent.id), node.name] : [node.name];
+                pathCache.set(id, result);
+                return result;
+            };
+
+            const maintenanceActive = new Map();
+            const server = UptimeKumaServer.getInstance();
+            for (const row of maintenanceRows) {
+                if (!maintenanceActive.has(row.maintenance_id)) {
+                    const maintenance = server.getMaintenance(row.maintenance_id);
+                    maintenanceActive.set(
+                        row.maintenance_id,
+                        maintenance ? await maintenance.isUnderMaintenance() : false
+                    );
+                }
+            }
+
+            const maintenanceByMonitor = new Map();
+            for (const row of maintenanceRows) {
+                if (!maintenanceByMonitor.has(row.monitor_id)) {
+                    maintenanceByMonitor.set(row.monitor_id, []);
+                }
+                maintenanceByMonitor.get(row.monitor_id).push(row.maintenance_id);
+            }
+
+            const maintenanceCache = new Map();
+            const isUnderMaintenance = (id) => {
+                if (maintenanceCache.has(id)) {
+                    return maintenanceCache.get(id);
+                }
+                let result = (maintenanceByMonitor.get(id) ?? []).some((maintenanceID) =>
+                    maintenanceActive.get(maintenanceID)
+                );
+                if (!result) {
+                    const node = byId.get(id);
+                    if (node?.parent) {
+                        result = isUnderMaintenance(node.parent);
+                    }
+                }
+                maintenanceCache.set(id, result);
+                return result;
+            };
 
             notifications.forEach((row) => {
                 if (!notificationsMap.has(row.monitor_id)) {
@@ -2063,24 +2148,13 @@ class Monitor extends BeanModel {
                 });
             });
 
-            monitorData.forEach((monitor, index) => {
-                maintenanceStatusMap.set(monitor.id, maintenanceStatuses[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                childrenIDsMap.set(monitor.id, childrenIDs[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                activeStatusMap.set(monitor.id, activeStatuses[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                forceInactiveMap.set(monitor.id, !forceInactiveStatuses[index]);
-            });
-
-            monitorData.forEach((monitor, index) => {
-                pathsMap.set(monitor.id, paths[index]);
+            monitorData.forEach((monitor) => {
+                const parentActive = isParentActive(monitor.id);
+                maintenanceStatusMap.set(monitor.id, isUnderMaintenance(monitor.id));
+                childrenIDsMap.set(monitor.id, allChildrenIDs(monitor.id));
+                activeStatusMap.set(monitor.id, monitor.active === 1 && parentActive);
+                forceInactiveMap.set(monitor.id, !parentActive);
+                pathsMap.set(monitor.id, pathOf(monitor.id));
             });
         }
 
